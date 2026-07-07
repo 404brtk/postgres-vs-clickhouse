@@ -2,14 +2,25 @@ import time
 import subprocess
 import os
 from datetime import datetime, timedelta
+from typing import Union
+from pydantic import BaseModel
 import io
 import random
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Response, Request
 from fastapi.responses import HTMLResponse
+from fastapi.middleware.cors import CORSMiddleware
 import psycopg
 import clickhouse_connect
 
 app = FastAPI(title="Database Benchmark API")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 CSV_FILE = "user_events.csv"
 PG_DSN = "host=localhost dbname=benchmark_db user=postgres password=postgres_password"
@@ -188,6 +199,86 @@ def run_import():
         "postgres_import_seconds": round(elapsed_pg, 2),
         "clickhouse_import_seconds": round(elapsed_ch, 2),
         "import_speedup": round(elapsed_pg / elapsed_ch, 2) if elapsed_ch > 0 else 0
+    }
+
+class EventPayload(BaseModel):
+    user_id: int | None = None
+    target_id: int | None = 0
+    category_id: int | None = 0
+    event_type: str
+    duration_sec: int | None = 0
+    is_liked: int | None = 0
+    device: str | None = "desktop"
+    commission: float | None = 0.0
+
+@app.post("/api/events")
+def create_events(payload: Union[EventPayload, list[EventPayload]], request: Request):
+    import hashlib
+    events = [payload] if isinstance(payload, EventPayload) else payload
+    
+    client_ip = request.client.host if request.client else "127.0.0.1"
+    user_agent = request.headers.get("user-agent", "")
+    today_str = datetime.now().strftime("%Y-%m-%d")
+    
+    session_str = f"{client_ip}-{user_agent}-{today_str}"
+    md5_hex = hashlib.md5(session_str.encode('utf-8')).hexdigest()
+    session_hash = int(md5_hex[:8], 16) % 100000 + 1
+    
+    prepared_rows = []
+    for ev in events:
+        event_id = random.randint(1000000000, 9999999999)
+        event_time = datetime.now()
+        user_id = ev.user_id if ev.user_id is not None else session_hash
+        commission = ev.commission if ev.commission is not None else 0.0
+        prepared_rows.append((
+            event_id, user_id, ev.target_id or 0, ev.category_id or 0,
+            ev.event_type, ev.duration_sec or 0, ev.is_liked or 0, event_time,
+            ev.device or "desktop", commission
+        ))
+        
+    start_pg = time.perf_counter()
+    try:
+        with psycopg.connect(PG_DSN) as conn:
+            with conn.cursor() as cur:
+                cur.executemany(
+                    """
+                    INSERT INTO user_events (event_id, user_id, target_id, category_id, event_type, duration_sec, is_liked, event_time, device, commission)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s);
+                    """,
+                    prepared_rows
+                )
+                conn.commit()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Postgres insert failed: {str(e)}")
+    elapsed_pg = (time.perf_counter() - start_pg) * 1000
+    
+    start_ch = time.perf_counter()
+    try:
+        ch_client = clickhouse_connect.get_client(
+            host=CH_HOST,
+            port=CH_PORT,
+            username=CH_USER,
+            password=CH_PASSWORD,
+            database=CH_DB
+        )
+        ch_client.insert(
+            "user_events",
+            data=prepared_rows,
+            column_names=["event_id", "user_id", "target_id", "category_id", "event_type", "duration_sec", "is_liked", "event_time", "device", "commission"]
+        )
+        ch_client.close()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Clickhouse insert failed: {str(e)}")
+    elapsed_ch = (time.perf_counter() - start_ch) * 1000
+    
+    return {
+        "status": "success",
+        "count": len(events),
+        "timings_ms": {
+            "postgres": round(elapsed_pg, 2),
+            "clickhouse": round(elapsed_ch, 2),
+            "speedup": round(elapsed_pg / elapsed_ch, 2) if elapsed_ch > 0 else 0
+        }
     }
 
 @app.post("/api/events/random")
@@ -645,4 +736,14 @@ def run_benchmark():
 @app.get("/", response_class=HTMLResponse)
 def get_dashboard():
     with open("index.html", "r") as f:
+        return HTMLResponse(content=f.read())
+
+@app.get("/tracker.js")
+def get_tracker():
+    with open("tracker.js", "r") as f:
+        return Response(content=f.read(), media_type="application/javascript")
+
+@app.get("/demo", response_class=HTMLResponse)
+def get_tracker_demo():
+    with open("tracker_demo.html", "r") as f:
         return HTMLResponse(content=f.read())
