@@ -1,851 +1,1245 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Postgres vs ClickHouse Benchmark</title>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <style>
-        :root {
-            --bg-color: #050b14;
-            --card-bg: #0d1527;
-            --border-color: #1e293b;
-            --text-primary: #f8fafc;
-            --text-secondary: #94a3b8;
-            --accent-blue: #0ea5e9;
-            --postgres-color: #0ea5e9;
-            --clickhouse-color: #f59e0b;
-            --success-color: #10b981;
-            --error-color: #ef4444;
-        }
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Postgres vs ClickHouse Benchmark</title>
+        <link
+            href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap"
+            rel="stylesheet"
+        />
+        <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+        <style>
+            :root {
+                --bg-color: #050b14;
+                --card-bg: #0d1527;
+                --border-color: #1e293b;
+                --text-primary: #f8fafc;
+                --text-secondary: #94a3b8;
+                --accent-blue: #0ea5e9;
+                --postgres-color: #0ea5e9;
+                --clickhouse-color: #f59e0b;
+                --success-color: #10b981;
+                --error-color: #ef4444;
+            }
 
-        * {
-            box-sizing: border-box;
-            margin: 0;
-            padding: 0;
-        }
+            * {
+                box-sizing: border-box;
+                margin: 0;
+                padding: 0;
+            }
 
-        body {
-            font-family: 'Inter', sans-serif;
-            background-color: var(--bg-color);
-            color: var(--text-primary);
-            line-height: 1.5;
-            padding: 2rem;
-        }
+            body {
+                font-family: "Inter", sans-serif;
+                background-color: var(--bg-color);
+                color: var(--text-primary);
+                line-height: 1.5;
+                padding: 2rem;
+            }
 
-        .container {
-            max-width: 1200px;
-            margin: 0 auto;
-        }
+            .container {
+                max-width: 1200px;
+                margin: 0 auto;
+            }
 
-        header {
-            text-align: center;
-            margin-bottom: 2.5rem;
-        }
+            header {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                margin-bottom: 2.5rem;
+            }
 
-        h1 {
-            font-size: 2rem;
-            font-weight: 600;
-            margin-bottom: 0.5rem;
-            color: var(--text-primary);
-        }
+            h1 {
+                font-size: 2rem;
+                font-weight: 600;
+                margin-bottom: 0.5rem;
+                color: var(--text-primary);
+            }
 
-        p.subtitle {
-            color: var(--text-secondary);
-            font-size: 1rem;
-        }
+            p.subtitle {
+                color: var(--text-secondary);
+                font-size: 1rem;
+            }
 
-        .grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 1.5rem;
-            margin-bottom: 1.5rem;
-        }
-
-        @media (max-width: 768px) {
             .grid {
-                grid-template-columns: 1fr;
+                display: grid;
+                grid-template-columns: 1fr 1fr;
+                gap: 1.5rem;
+                margin-bottom: 1.5rem;
             }
-        }
 
-        .card {
-            background-color: var(--card-bg);
-            border: 1px solid var(--border-color);
-            border-radius: 8px;
-            padding: 1.5rem;
-        }
-
-        .card h2 {
-            font-size: 1.15rem;
-            margin-bottom: 1.25rem;
-            font-weight: 600;
-            color: var(--text-primary);
-        }
-
-        .btn {
-            display: inline-block;
-            width: 100%;
-            background-color: var(--accent-blue);
-            color: var(--text-primary);
-            font-weight: 500;
-            border: none;
-            padding: 0.65rem 1.25rem;
-            border-radius: 4px;
-            cursor: pointer;
-            transition: background-color 0.15s ease, transform 0.1s ease;
-            text-align: center;
-            font-size: 0.95rem;
-        }
-
-        .btn:hover {
-            background-color: #0284c7;
-        }
-
-        .btn:active {
-            transform: scale(0.99);
-        }
-
-        .btn-secondary {
-            background-color: #1e293b;
-            border: 1px solid var(--border-color);
-            color: var(--text-primary);
-        }
-
-        .btn-secondary:hover {
-            background-color: #334155;
-        }
-
-        .form-group {
-            margin-bottom: 1rem;
-        }
-
-        .form-group label {
-            display: block;
-            margin-bottom: 0.5rem;
-            font-size: 0.875rem;
-            color: var(--text-secondary);
-        }
-
-        .form-control {
-            width: 100%;
-            background-color: var(--bg-color);
-            border: 1px solid var(--border-color);
-            border-radius: 6px;
-            padding: 0.6rem 0.8rem;
-            color: var(--text-primary);
-            font-family: inherit;
-            font-size: 0.95rem;
-        }
-
-        .form-control:focus {
-            outline: none;
-            border-color: var(--accent-blue);
-        }
-
-        .flex-row {
-            display: flex;
-            gap: 1rem;
-        }
-
-        .result-box {
-            margin-top: 1.5rem;
-            background-color: var(--bg-color);
-            border: 1px solid var(--border-color);
-            border-radius: 6px;
-            padding: 1rem;
-            font-size: 0.9rem;
-        }
-
-        .result-item {
-            display: flex;
-            justify-content: space-between;
-            margin-bottom: 0.5rem;
-        }
-
-        .result-item:last-child {
-            margin-bottom: 0;
-            border-top: 1px dashed var(--border-color);
-            padding-top: 0.5rem;
-            margin-top: 0.5rem;
-        }
-
-        .timing-bar-container {
-            margin-top: 1rem;
-        }
-
-        .timing-bar-title {
-            font-size: 0.8rem;
-            color: var(--text-secondary);
-            margin-bottom: 0.25rem;
-        }
-
-        .timing-bar {
-            height: 10px;
-            border-radius: 5px;
-            background-color: var(--border-color);
-            overflow: hidden;
-            display: flex;
-        }
-
-        .timing-pg {
-            background-color: var(--postgres-color);
-            height: 100%;
-        }
-
-        .timing-ch {
-            background-color: var(--clickhouse-color);
-            height: 100%;
-        }
-
-        .speedup-badge {
-            background-color: rgba(16, 185, 129, 0.15);
-            color: var(--success-color);
-            padding: 0.1rem 0.5rem;
-            border-radius: 4px;
-            font-weight: 600;
-        }
-
-        .terminal {
-            background-color: #020617;
-            border: 1px solid var(--border-color);
-            border-radius: 6px;
-            padding: 1rem;
-            font-family: monospace;
-            font-size: 0.85rem;
-            color: #38bdf8;
-            max-height: 200px;
-            overflow-y: auto;
-            margin-bottom: 2rem;
-        }
-
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-top: 1.5rem;
-            font-size: 0.9rem;
-        }
-
-        th, td {
-            text-align: left;
-            padding: 0.75rem;
-            border-bottom: 1px solid var(--border-color);
-        }
-
-        th {
-            color: var(--text-secondary);
-            font-weight: 600;
-        }
-
-        .chart-container {
-            position: relative;
-            height: 350px;
-            width: 100%;
-            margin-top: 1.5rem;
-        }
-
-        .loading-spinner {
-            display: inline-block;
-            width: 20px;
-            height: 20px;
-            border: 3px solid rgba(255,255,255,.3);
-            border-radius: 50%;
-            border-top-color: #fff;
-            animation: spin 1s ease-in-out infinite;
-            margin-right: 0.5rem;
-            vertical-align: middle;
-        }
-
-        @keyframes spin {
-            to { transform: rotate(360deg); }
-        }
-
-        .hidden {
-            display: none;
-        }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <header>
-            <h1>Postgres vs ClickHouse</h1>
-        </header>
-
-        <div class="grid">
-            <div class="card">
-                <h2>Controls</h2>
-                
-                <div id="db-status-container" style="margin-bottom: 1.25rem; padding: 1rem; border-radius: 6px; background-color: rgba(14, 165, 233, 0.05); border: 1px solid var(--border-color);">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
-                        <span style="font-size: 0.9rem; color: var(--text-secondary);">Database Status:</span>
-                        <strong id="status-badge" style="color: var(--success-color); font-size: 0.85rem; padding: 0.15rem 0.5rem; background: rgba(16, 185, 129, 0.15); border-radius: 4px; border: 1px solid rgba(16, 185, 129, 0.3);">Checking...</strong>
-                    </div>
-                    <div style="font-size: 0.8rem; color: var(--text-secondary);">
-                        Postgres: <strong id="status-pg-count" style="color: var(--text-primary);">--</strong> rows<br>
-                        ClickHouse: <strong id="status-ch-count" style="color: var(--text-primary);">--</strong> rows
-                    </div>
-                </div>
-
-                <div style="margin-bottom: 1rem;">
-                    <button class="btn" id="btn-benchmark" onclick="runBenchmark()" style="width: 100%;">
-                        <span class="loading-spinner hidden" id="spinner-benchmark"></span>
-                        Run Complete Benchmark Suite
-                    </button>
-                </div>
-
-                <div>
-                    <button class="btn btn-secondary" id="btn-import" onclick="runImport()">
-                        <span class="loading-spinner hidden" id="spinner-import"></span>
-                        Import CSV Data
-                    </button>
-                    <p id="import-desc" style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 0.5rem; text-align: center;">
-                        Triggers database schema reset & imports user_events.csv.
-                    </p>
-                </div>
-
-                <div class="result-box hidden" id="import-results">
-                    <div class="result-item">
-                        <span>Postgres Import:</span>
-                        <span id="import-time-pg">--</span>
-                    </div>
-                    <div class="result-item">
-                        <span>ClickHouse Import:</span>
-                        <span id="import-time-ch">--</span>
-                    </div>
-                    <div class="result-item">
-                        <span>Speedup:</span>
-                        <span id="import-speedup" class="speedup-badge">--</span>
-                    </div>
-                    <div class="timing-bar-container" style="margin-top: 1rem;">
-                        <div class="timing-bar-title">Import Latency Ratio (relative)</div>
-                        <div class="timing-bar">
-                            <div class="timing-pg" id="bar-import-pg" style="width: 50%;"></div>
-                            <div class="timing-ch" id="bar-import-ch" style="width: 50%;"></div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <div class="card">
-                <h2>Commission Calculator</h2>
-                <div class="flex-row">
-                    <div class="form-group" style="flex: 1;">
-                        <label for="filter-device">Device</label>
-                        <select class="form-control" id="filter-device">
-                            <option value="">All Devices</option>
-                            <option value="mobile">Mobile</option>
-                            <option value="desktop">Desktop</option>
-                            <option value="tablet">Tablet</option>
-                        </select>
-                    </div>
-                    <div class="form-group" style="flex: 1;">
-                        <label for="filter-event">Event Type</label>
-                        <select class="form-control" id="filter-event">
-                            <option value="">All Events</option>
-                            <option value="view">View</option>
-                            <option value="click">Click</option>
-                            <option value="scroll">Scroll</option>
-                            <option value="share">Share</option>
-                        </select>
-                    </div>
-                </div>
-                <div class="form-group" style="display: flex; align-items: center; gap: 0.5rem;">
-                    <input type="checkbox" id="filter-random-user" style="width: auto; cursor: pointer; transform: scale(1.1);">
-                    <label for="filter-random-user" style="margin-bottom: 0; cursor: pointer; font-size: 0.95rem;">Filter by a random user</label>
-                </div>
-                <div class="flex-row">
-                    <div class="form-group" style="flex: 1;">
-                        <label for="filter-start">Start Date</label>
-                        <input type="date" class="form-control" id="filter-start" min="2026-01-01" max="2026-06-30">
-                    </div>
-                    <div class="form-group" style="flex: 1;">
-                        <label for="filter-end">End Date</label>
-                        <input type="date" class="form-control" id="filter-end" min="2026-01-01" max="2026-06-30">
-                    </div>
-                </div>
-                <button class="btn" id="btn-calc" onclick="calculateCommission()">
-                    <span class="loading-spinner hidden" id="spinner-calc"></span>
-                    Calculate Commission
-                </button>
-
-                <div class="result-box hidden" id="calc-results">
-                    <div class="result-item">
-                        <span>Total Commission:</span>
-                        <strong id="calc-total">$0.00</strong>
-                    </div>
-                    <div class="result-item">
-                        <span>Avg Commission:</span>
-                        <strong id="calc-avg">$0.00</strong>
-                    </div>
-                    <div class="result-item">
-                        <span>Matching Events:</span>
-                        <strong id="calc-count">0</strong>
-                    </div>
-                    <div class="result-item">
-                        <span>Selected User:</span>
-                        <strong id="calc-selected-user">All Users</strong>
-                    </div>
-                    <div class="result-item">
-                        <span>Postgres Timing:</span>
-                        <span id="calc-time-pg">--</span>
-                    </div>
-                    <div class="result-item">
-                        <span>ClickHouse Timing:</span>
-                        <span id="calc-time-ch">--</span>
-                    </div>
-                    <div class="result-item">
-                        <span>Speedup:</span>
-                        <span id="calc-speedup" class="speedup-badge">--</span>
-                    </div>
-                    <div class="timing-bar-container">
-                        <div class="timing-bar-title">Query Execution Latency Ratio (relative)</div>
-                        <div class="timing-bar">
-                            <div class="timing-pg" id="bar-pg" style="width: 50%;"></div>
-                            <div class="timing-ch" id="bar-ch" style="width: 50%;"></div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <div class="grid">
-            <div class="card">
-                <h2>Single Row Operations</h2>
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; margin-bottom: 1.25rem;">
-                    <button class="btn btn-secondary" onclick="addEvent()">
-                        <span class="loading-spinner hidden" id="spinner-add"></span>
-                        Insert Event
-                    </button>
-                    <button class="btn btn-secondary" onclick="lookupEvent()">
-                        <span class="loading-spinner hidden" id="spinner-lookup"></span>
-                        Fetch Event
-                    </button>
-                    <button class="btn btn-secondary" onclick="updateEvent()">
-                        <span class="loading-spinner hidden" id="spinner-update"></span>
-                        Update Event
-                    </button>
-                    <button class="btn btn-secondary" onclick="deleteEvent()">
-                        <span class="loading-spinner hidden" id="spinner-delete"></span>
-                        Delete Event
-                    </button>
-                </div>
-
-                <div class="result-box hidden" id="add-results">
-                    <div class="result-item">
-                        <span>Operation:</span>
-                        <strong id="oltp-operation">--</strong>
-                    </div>
-                    <div class="result-item">
-                        <span>Target Event ID:</span>
-                        <strong id="oltp-event-id">--</strong>
-                    </div>
-                    <div class="result-item">
-                        <span>Postgres Latency:</span>
-                        <strong id="oltp-time-pg">--</strong>
-                    </div>
-                    <div class="result-item">
-                        <span>ClickHouse Latency:</span>
-                        <strong id="oltp-time-ch">--</strong>
-                    </div>
-                    <div class="result-item">
-                        <span>Speedup:</span>
-                        <span id="oltp-speedup" class="speedup-badge">--</span>
-                    </div>
-                    <div class="timing-bar-container" style="margin-top: 1rem;">
-                        <div class="timing-bar-title">Operation Latency Ratio (relative)</div>
-                        <div class="timing-bar">
-                            <div class="timing-pg" id="bar-oltp-pg" style="width: 50%;"></div>
-                            <div class="timing-ch" id="bar-oltp-ch" style="width: 50%;"></div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <div class="card">
-                <h2>Batch Operations</h2>
-                <div class="form-group">
-                    <label for="batch-count">Number of Events to Insert</label>
-                    <select class="form-control" id="batch-count">
-                        <option value="10000">10,000 random events</option>
-                        <option value="50000">50,000 random events</option>
-                        <option value="100000">100,000 random events</option>
-                        <option value="1000000">1,000,000 random events</option>
-                    </select>
-                </div>
-                <button class="btn btn-secondary" onclick="addEventsBatch()">
-                    <span class="loading-spinner hidden" id="spinner-batch-insert"></span>
-                    Insert Batch
-                </button>
-
-                <div class="result-box hidden" id="batch-results">
-                    <div class="result-item">
-                        <span>Events Inserted:</span>
-                        <strong id="batch-inserted">--</strong>
-                    </div>
-                    <div class="result-item">
-                        <span>Postgres Write Latency:</span>
-                        <strong id="batch-time-pg">--</strong>
-                    </div>
-                    <div class="result-item">
-                        <span>ClickHouse Write Latency:</span>
-                        <strong id="batch-time-ch">--</strong>
-                    </div>
-                    <div class="result-item">
-                        <span>Speedup:</span>
-                        <span id="batch-speedup" class="speedup-badge">--</span>
-                    </div>
-                    <div class="timing-bar-container" style="margin-top: 1rem;">
-                        <div class="timing-bar-title">Ingestion Latency Ratio (relative)</div>
-                        <div class="timing-bar">
-                            <div class="timing-pg" id="bar-batch-pg" style="width: 50%;"></div>
-                            <div class="timing-ch" id="bar-batch-ch" style="width: 50%;"></div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <div class="card" style="margin-bottom: 2rem;">
-            <h2>Live Logs</h2>
-            <div class="terminal" id="terminal">System initialized. Click Import or Run Benchmark to start.</div>
-        </div>
-
-        <div class="card hidden" id="benchmark-results-container">
-            <h2>Benchmark Results</h2>
-            <div class="chart-container">
-                <canvas id="benchmarkChart"></canvas>
-            </div>
-            <table id="results-table">
-                <thead>
-                    <tr>
-                        <th>Query Name</th>
-                        <th>Postgres (ms)</th>
-                        <th>ClickHouse (ms)</th>
-                        <th>Speedup</th>
-                    </tr>
-                </thead>
-                <tbody>
-                </tbody>
-            </table>
-        </div>
-    </div>
-
-    <script>
-        let myChart = null;
-
-        function log(msg, isError = false) {
-            const term = document.getElementById("terminal");
-            const time = new Date().toLocaleTimeString();
-            const color = isError ? "var(--error-color)" : "#38bdf8";
-            term.innerHTML += `<div style="color: ${color}">[${time}] ${msg}</div>`;
-            term.scrollTop = term.scrollHeight;
-        }
-
-        async function checkStatus() {
-            try {
-                const response = await fetch("/api/status");
-                const data = await response.json();
-                
-                const pgCount = data.postgres_count;
-                const chCount = data.clickhouse_count;
-                
-                document.getElementById("status-pg-count").innerText = pgCount.toLocaleString();
-                document.getElementById("status-ch-count").innerText = chCount.toLocaleString();
-                
-                const badge = document.getElementById("status-badge");
-                const btnBenchmark = document.getElementById("btn-benchmark");
-                const btnImport = document.getElementById("btn-import");
-                
-                if (data.is_ready) {
-                    badge.innerText = "Ready";
-                    badge.style.color = "var(--success-color)";
-                    badge.style.backgroundColor = "rgba(16, 185, 129, 0.15)";
-                    badge.style.borderColor = "rgba(16, 185, 129, 0.3)";
-                    
-                    btnBenchmark.disabled = false;
-                    btnBenchmark.style.opacity = "1";
-                    btnBenchmark.style.cursor = "pointer";
-                    
-                    btnImport.className = "btn btn-secondary";
-                    btnImport.innerHTML = '<span class="loading-spinner hidden" id="spinner-import"></span> Reset & Re-import Data';
-                    document.getElementById("import-desc").innerText = "Resets both databases and re-imports the 25M records from scratch.";
-                } else {
-                    badge.innerText = "Empty";
-                    badge.style.color = "var(--clickhouse-color)";
-                    badge.style.backgroundColor = "rgba(245, 158, 11, 0.15)";
-                    badge.style.borderColor = "rgba(245, 158, 11, 0.3)";
-                    
-                    btnBenchmark.disabled = true;
-                    btnBenchmark.style.opacity = "0.5";
-                    btnBenchmark.style.cursor = "not-allowed";
-                    
-                    btnImport.className = "btn";
-                    btnImport.innerHTML = '<span class="loading-spinner hidden" id="spinner-import"></span> Import CSV Data';
-                    document.getElementById("import-desc").innerText = "Triggers database schema reset & imports user_events.csv.";
+            @media (max-width: 768px) {
+                .grid {
+                    grid-template-columns: 1fr;
                 }
-            } catch (err) {
-                console.error("Failed to check status:", err);
             }
-        }
 
-        async function runImport() {
-            document.getElementById("btn-import").disabled = true;
-            document.getElementById("spinner-import").classList.remove("hidden");
-            log("Starting data import. Resetting schemas and reloading CSV...");
-            
-            try {
-                const response = await fetch("/api/import", { method: "POST" });
-                const data = await response.json();
-                
-                if (!response.ok) throw new Error(data.detail || "Import failed");
-                
-                log(`Import finished! Postgres: ${data.postgres_import_seconds}s, ClickHouse: ${data.clickhouse_import_seconds}s.`);
-                
-                document.getElementById("import-results").classList.remove("hidden");
-                document.getElementById("import-time-pg").innerText = `${data.postgres_import_seconds} s`;
-                document.getElementById("import-time-ch").innerText = `${data.clickhouse_import_seconds} s`;
-                document.getElementById("import-speedup").innerText = `${data.import_speedup}x`;
-                
-                const pgTime = data.postgres_import_seconds;
-                const chTime = data.clickhouse_import_seconds;
+            .card {
+                background-color: var(--card-bg);
+                border: 1px solid var(--border-color);
+                border-radius: 8px;
+                padding: 1.5rem;
+            }
+
+            .card h2 {
+                font-size: 1.15rem;
+                margin-bottom: 1.25rem;
+                font-weight: 600;
+                color: var(--text-primary);
+            }
+
+            .btn {
+                display: inline-block;
+                width: 100%;
+                background-color: var(--accent-blue);
+                color: var(--text-primary);
+                font-weight: 500;
+                border: none;
+                padding: 0.65rem 1.25rem;
+                border-radius: 4px;
+                cursor: pointer;
+                transition:
+                    background-color 0.15s ease,
+                    transform 0.1s ease;
+                text-align: center;
+                font-size: 0.95rem;
+            }
+
+            .btn:hover {
+                background-color: #0284c7;
+            }
+
+            .btn:active {
+                transform: scale(0.99);
+            }
+
+            .btn-secondary {
+                background-color: #1e293b;
+                border: 1px solid var(--border-color);
+                color: var(--text-primary);
+            }
+
+            .btn-secondary:hover {
+                background-color: #334155;
+            }
+
+            .form-group {
+                margin-bottom: 1rem;
+            }
+
+            .form-group label {
+                display: block;
+                margin-bottom: 0.5rem;
+                font-size: 0.875rem;
+                color: var(--text-secondary);
+            }
+
+            .form-control {
+                width: 100%;
+                background-color: var(--bg-color);
+                border: 1px solid var(--border-color);
+                border-radius: 6px;
+                padding: 0.6rem 0.8rem;
+                color: var(--text-primary);
+                font-family: inherit;
+                font-size: 0.95rem;
+            }
+
+            .form-control:focus {
+                outline: none;
+                border-color: var(--accent-blue);
+            }
+
+            .flex-row {
+                display: flex;
+                gap: 1rem;
+            }
+
+            .result-box {
+                margin-top: 1.5rem;
+                background-color: var(--bg-color);
+                border: 1px solid var(--border-color);
+                border-radius: 6px;
+                padding: 1rem;
+                font-size: 0.9rem;
+            }
+
+            .result-item {
+                display: flex;
+                justify-content: space-between;
+                margin-bottom: 0.5rem;
+            }
+
+            .result-item:last-child {
+                margin-bottom: 0;
+                border-top: 1px dashed var(--border-color);
+                padding-top: 0.5rem;
+                margin-top: 0.5rem;
+            }
+
+            .timing-bar-container {
+                margin-top: 1rem;
+            }
+
+            .timing-bar-title {
+                font-size: 0.8rem;
+                color: var(--text-secondary);
+                margin-bottom: 0.25rem;
+            }
+
+            .timing-bar {
+                height: 10px;
+                border-radius: 5px;
+                background-color: var(--border-color);
+                overflow: hidden;
+                display: flex;
+            }
+
+            .timing-pg {
+                background-color: var(--postgres-color);
+                height: 100%;
+            }
+
+            .timing-ch {
+                background-color: var(--clickhouse-color);
+                height: 100%;
+            }
+
+            .speedup-badge {
+                background-color: rgba(16, 185, 129, 0.15);
+                color: var(--success-color);
+                padding: 0.1rem 0.5rem;
+                border-radius: 4px;
+                font-weight: 600;
+            }
+
+            .terminal {
+                background-color: #020617;
+                border: 1px solid var(--border-color);
+                border-radius: 6px;
+                padding: 1rem;
+                font-family: monospace;
+                font-size: 0.85rem;
+                color: #38bdf8;
+                max-height: 200px;
+                overflow-y: auto;
+                margin-bottom: 2rem;
+            }
+
+            table {
+                width: 100%;
+                border-collapse: collapse;
+                margin-top: 1.5rem;
+                font-size: 0.9rem;
+            }
+
+            th,
+            td {
+                text-align: left;
+                padding: 0.75rem;
+                border-bottom: 1px solid var(--border-color);
+            }
+
+            th {
+                color: var(--text-secondary);
+                font-weight: 600;
+            }
+
+            .chart-container {
+                position: relative;
+                height: 350px;
+                width: 100%;
+                margin-top: 1.5rem;
+            }
+
+            .loading-spinner {
+                display: inline-block;
+                width: 20px;
+                height: 20px;
+                border: 3px solid rgba(255, 255, 255, 0.3);
+                border-radius: 50%;
+                border-top-color: #fff;
+                animation: spin 1s ease-in-out infinite;
+                margin-right: 0.5rem;
+                vertical-align: middle;
+            }
+
+            @keyframes spin {
+                to {
+                    transform: rotate(360deg);
+                }
+            }
+
+            .nav-link {
+                color: var(--text-secondary);
+                text-decoration: none;
+                font-size: 0.95rem;
+                transition: color 0.2s;
+            }
+
+            .nav-link:hover {
+                color: var(--text-primary);
+            }
+
+            .hidden {
+                display: none;
+            }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <header>
+                <h1>Postgres vs ClickHouse</h1>
+                <a href="/demo" class="nav-link">Live Tracker Demo</a>
+            </header>
+
+            <div class="grid">
+                <div class="card">
+                    <h2>Controls</h2>
+
+                    <div
+                        id="db-status-container"
+                        style="
+                            margin-bottom: 1.25rem;
+                            padding: 1rem;
+                            border-radius: 6px;
+                            background-color: rgba(14, 165, 233, 0.05);
+                            border: 1px solid var(--border-color);
+                        "
+                    >
+                        <div
+                            style="
+                                display: flex;
+                                justify-content: space-between;
+                                align-items: center;
+                                margin-bottom: 0.5rem;
+                            "
+                        >
+                            <span
+                                style="
+                                    font-size: 0.9rem;
+                                    color: var(--text-secondary);
+                                "
+                                >Database Status:</span
+                            >
+                            <strong
+                                id="status-badge"
+                                style="
+                                    color: var(--success-color);
+                                    font-size: 0.85rem;
+                                    padding: 0.15rem 0.5rem;
+                                    background: rgba(16, 185, 129, 0.15);
+                                    border-radius: 4px;
+                                    border: 1px solid rgba(16, 185, 129, 0.3);
+                                "
+                                >Checking...</strong
+                            >
+                        </div>
+                        <div
+                            style="
+                                font-size: 0.8rem;
+                                color: var(--text-secondary);
+                            "
+                        >
+                            Postgres:
+                            <strong
+                                id="status-pg-count"
+                                style="color: var(--text-primary)"
+                                >--</strong
+                            >
+                            rows<br />
+                            ClickHouse:
+                            <strong
+                                id="status-ch-count"
+                                style="color: var(--text-primary)"
+                                >--</strong
+                            >
+                            rows
+                        </div>
+                    </div>
+
+                    <div style="margin-bottom: 1rem">
+                        <button
+                            class="btn"
+                            id="btn-benchmark"
+                            onclick="runBenchmark()"
+                            style="width: 100%"
+                        >
+                            <span
+                                class="loading-spinner hidden"
+                                id="spinner-benchmark"
+                            ></span>
+                            Run Complete Benchmark Suite
+                        </button>
+                    </div>
+
+                    <div>
+                        <button
+                            class="btn btn-secondary"
+                            id="btn-import"
+                            onclick="runImport()"
+                        >
+                            <span
+                                class="loading-spinner hidden"
+                                id="spinner-import"
+                            ></span>
+                            <span id="btn-import-text"
+                                >Reset & Re-import Data</span
+                            >
+                        </button>
+                        <p
+                            id="import-desc"
+                            style="
+                                font-size: 0.75rem;
+                                color: var(--text-secondary);
+                                margin-top: 0.5rem;
+                                text-align: center;
+                            "
+                        >
+                            Resets both databases and re-imports user_events.csv
+                            from scratch.
+                        </p>
+                    </div>
+
+                    <div class="result-box hidden" id="import-results">
+                        <div class="result-item">
+                            <span>Postgres Import:</span>
+                            <span id="import-time-pg">--</span>
+                        </div>
+                        <div class="result-item">
+                            <span>ClickHouse Import:</span>
+                            <span id="import-time-ch">--</span>
+                        </div>
+                        <div class="result-item">
+                            <span>Speedup:</span>
+                            <span id="import-speedup" class="speedup-badge"
+                                >--</span
+                            >
+                        </div>
+                        <div
+                            class="timing-bar-container"
+                            style="margin-top: 1rem"
+                        >
+                            <div class="timing-bar-title">
+                                Import Latency Ratio (relative)
+                            </div>
+                            <div class="timing-bar">
+                                <div
+                                    class="timing-pg"
+                                    id="bar-import-pg"
+                                    style="width: 50%"
+                                ></div>
+                                <div
+                                    class="timing-ch"
+                                    id="bar-import-ch"
+                                    style="width: 50%"
+                                ></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h2>Commission Calculator</h2>
+                    <div class="flex-row">
+                        <div class="form-group" style="flex: 1">
+                            <label for="filter-device">Device</label>
+                            <select class="form-control" id="filter-device">
+                                <option value="">All Devices</option>
+                                <option value="mobile">Mobile</option>
+                                <option value="desktop">Desktop</option>
+                                <option value="tablet">Tablet</option>
+                            </select>
+                        </div>
+                        <div class="form-group" style="flex: 1">
+                            <label for="filter-event">Event Type</label>
+                            <select class="form-control" id="filter-event">
+                                <option value="">All Events</option>
+                                <option value="view">View</option>
+                                <option value="click">Click</option>
+                                <option value="scroll">Scroll</option>
+                                <option value="share">Share</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div
+                        class="form-group"
+                        style="display: flex; align-items: center; gap: 0.5rem"
+                    >
+                        <input
+                            type="checkbox"
+                            id="filter-random-user"
+                            style="
+                                width: auto;
+                                cursor: pointer;
+                                transform: scale(1.1);
+                            "
+                        />
+                        <label
+                            for="filter-random-user"
+                            style="
+                                margin-bottom: 0;
+                                cursor: pointer;
+                                font-size: 0.95rem;
+                            "
+                            >Filter by a random user</label
+                        >
+                    </div>
+                    <div class="flex-row">
+                        <div class="form-group" style="flex: 1">
+                            <label for="filter-start">Start Date</label>
+                            <input
+                                type="date"
+                                class="form-control"
+                                id="filter-start"
+                                min="2026-01-01"
+                                max="2026-06-30"
+                            />
+                        </div>
+                        <div class="form-group" style="flex: 1">
+                            <label for="filter-end">End Date</label>
+                            <input
+                                type="date"
+                                class="form-control"
+                                id="filter-end"
+                                min="2026-01-01"
+                                max="2026-06-30"
+                            />
+                        </div>
+                    </div>
+                    <button
+                        class="btn"
+                        id="btn-calc"
+                        onclick="calculateCommission()"
+                    >
+                        <span
+                            class="loading-spinner hidden"
+                            id="spinner-calc"
+                        ></span>
+                        Calculate Commission
+                    </button>
+
+                    <div class="result-box hidden" id="calc-results">
+                        <div class="result-item">
+                            <span>Total Commission:</span>
+                            <strong id="calc-total">$0.00</strong>
+                        </div>
+                        <div class="result-item">
+                            <span>Avg Commission:</span>
+                            <strong id="calc-avg">$0.00</strong>
+                        </div>
+                        <div class="result-item">
+                            <span>Matching Events:</span>
+                            <strong id="calc-count">0</strong>
+                        </div>
+                        <div class="result-item">
+                            <span>Selected User:</span>
+                            <strong id="calc-selected-user">All Users</strong>
+                        </div>
+                        <div class="result-item">
+                            <span>Postgres Timing:</span>
+                            <span id="calc-time-pg">--</span>
+                        </div>
+                        <div class="result-item">
+                            <span>ClickHouse Timing:</span>
+                            <span id="calc-time-ch">--</span>
+                        </div>
+                        <div class="result-item">
+                            <span>Speedup:</span>
+                            <span id="calc-speedup" class="speedup-badge"
+                                >--</span
+                            >
+                        </div>
+                        <div class="timing-bar-container">
+                            <div class="timing-bar-title">
+                                Query Execution Latency Ratio (relative)
+                            </div>
+                            <div class="timing-bar">
+                                <div
+                                    class="timing-pg"
+                                    id="bar-pg"
+                                    style="width: 50%"
+                                ></div>
+                                <div
+                                    class="timing-ch"
+                                    id="bar-ch"
+                                    style="width: 50%"
+                                ></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="grid">
+                <div class="card">
+                    <h2>Single Row Operations</h2>
+                    <div
+                        style="
+                            display: grid;
+                            grid-template-columns: 1fr 1fr;
+                            gap: 0.75rem;
+                            margin-bottom: 1.25rem;
+                        "
+                    >
+                        <button class="btn btn-secondary" onclick="addEvent()">
+                            <span
+                                class="loading-spinner hidden"
+                                id="spinner-add"
+                            ></span>
+                            Insert Event
+                        </button>
+                        <button
+                            class="btn btn-secondary"
+                            onclick="lookupEvent()"
+                        >
+                            <span
+                                class="loading-spinner hidden"
+                                id="spinner-lookup"
+                            ></span>
+                            Fetch Event
+                        </button>
+                        <button
+                            class="btn btn-secondary"
+                            onclick="updateEvent()"
+                        >
+                            <span
+                                class="loading-spinner hidden"
+                                id="spinner-update"
+                            ></span>
+                            Update Event
+                        </button>
+                        <button
+                            class="btn btn-secondary"
+                            onclick="deleteEvent()"
+                        >
+                            <span
+                                class="loading-spinner hidden"
+                                id="spinner-delete"
+                            ></span>
+                            Delete Event
+                        </button>
+                    </div>
+
+                    <div class="result-box hidden" id="add-results">
+                        <div class="result-item">
+                            <span>Operation:</span>
+                            <strong id="oltp-operation">--</strong>
+                        </div>
+                        <div class="result-item">
+                            <span>Target Event ID:</span>
+                            <strong id="oltp-event-id">--</strong>
+                        </div>
+                        <div class="result-item">
+                            <span>Postgres Latency:</span>
+                            <strong id="oltp-time-pg">--</strong>
+                        </div>
+                        <div class="result-item">
+                            <span>ClickHouse Latency:</span>
+                            <strong id="oltp-time-ch">--</strong>
+                        </div>
+                        <div class="result-item">
+                            <span>Speedup:</span>
+                            <span id="oltp-speedup" class="speedup-badge"
+                                >--</span
+                            >
+                        </div>
+                        <div
+                            class="timing-bar-container"
+                            style="margin-top: 1rem"
+                        >
+                            <div class="timing-bar-title">
+                                Operation Latency Ratio (relative)
+                            </div>
+                            <div class="timing-bar">
+                                <div
+                                    class="timing-pg"
+                                    id="bar-oltp-pg"
+                                    style="width: 50%"
+                                ></div>
+                                <div
+                                    class="timing-ch"
+                                    id="bar-oltp-ch"
+                                    style="width: 50%"
+                                ></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h2>Batch Operations</h2>
+                    <div class="form-group">
+                        <label for="batch-count"
+                            >Number of Events to Insert</label
+                        >
+                        <select class="form-control" id="batch-count">
+                            <option value="10000">10,000 random events</option>
+                            <option value="50000">50,000 random events</option>
+                            <option value="100000">
+                                100,000 random events
+                            </option>
+                            <option value="1000000">
+                                1,000,000 random events
+                            </option>
+                        </select>
+                    </div>
+                    <button
+                        class="btn btn-secondary"
+                        onclick="addEventsBatch()"
+                    >
+                        <span
+                            class="loading-spinner hidden"
+                            id="spinner-batch-insert"
+                        ></span>
+                        Insert Batch
+                    </button>
+
+                    <div class="result-box hidden" id="batch-results">
+                        <div class="result-item">
+                            <span>Events Inserted:</span>
+                            <strong id="batch-inserted">--</strong>
+                        </div>
+                        <div class="result-item">
+                            <span>Postgres Write Latency:</span>
+                            <strong id="batch-time-pg">--</strong>
+                        </div>
+                        <div class="result-item">
+                            <span>ClickHouse Write Latency:</span>
+                            <strong id="batch-time-ch">--</strong>
+                        </div>
+                        <div class="result-item">
+                            <span>Speedup:</span>
+                            <span id="batch-speedup" class="speedup-badge"
+                                >--</span
+                            >
+                        </div>
+                        <div
+                            class="timing-bar-container"
+                            style="margin-top: 1rem"
+                        >
+                            <div class="timing-bar-title">
+                                Ingestion Latency Ratio (relative)
+                            </div>
+                            <div class="timing-bar">
+                                <div
+                                    class="timing-pg"
+                                    id="bar-batch-pg"
+                                    style="width: 50%"
+                                ></div>
+                                <div
+                                    class="timing-ch"
+                                    id="bar-batch-ch"
+                                    style="width: 50%"
+                                ></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card" style="margin-bottom: 2rem">
+                <h2>Live Logs</h2>
+                <div class="terminal" id="terminal">
+                    System initialized. Click Import or Run Benchmark to start.
+                </div>
+            </div>
+
+            <div class="card hidden" id="benchmark-results-container">
+                <h2>Benchmark Results</h2>
+                <div class="chart-container">
+                    <canvas id="benchmarkChart"></canvas>
+                </div>
+                <table id="results-table">
+                    <thead>
+                        <tr>
+                            <th>Query Name</th>
+                            <th>Postgres (ms)</th>
+                            <th>ClickHouse (ms)</th>
+                            <th>Speedup</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+        </div>
+
+        <script>
+            let myChart = null;
+
+            function log(msg, isError = false) {
+                const term = document.getElementById("terminal");
+                const time = new Date().toLocaleTimeString();
+                const color = isError ? "var(--error-color)" : "#38bdf8";
+                term.innerHTML += `<div style="color: ${color}">[${time}] ${msg}</div>`;
+                term.scrollTop = term.scrollHeight;
+            }
+
+            async function checkStatus() {
+                try {
+                    const response = await fetch("/api/status");
+                    const data = await response.json();
+
+                    const pgCount = data.postgres_count;
+                    const chCount = data.clickhouse_count;
+
+                    document.getElementById("status-pg-count").innerText =
+                        pgCount.toLocaleString();
+                    document.getElementById("status-ch-count").innerText =
+                        chCount.toLocaleString();
+
+                    const badge = document.getElementById("status-badge");
+                    const btnBenchmark =
+                        document.getElementById("btn-benchmark");
+                    const btnImport = document.getElementById("btn-import");
+
+                    if (data.is_ready) {
+                        badge.innerText = "Ready";
+                        badge.style.color = "var(--success-color)";
+                        badge.style.backgroundColor =
+                            "rgba(16, 185, 129, 0.15)";
+                        badge.style.borderColor = "rgba(16, 185, 129, 0.3)";
+
+                        btnBenchmark.disabled = false;
+                        btnBenchmark.style.opacity = "1";
+                        btnBenchmark.style.cursor = "pointer";
+
+                        btnImport.className = "btn btn-secondary";
+                    } else {
+                        badge.innerText = "Empty";
+                        badge.style.color = "var(--clickhouse-color)";
+                        badge.style.backgroundColor =
+                            "rgba(245, 158, 11, 0.15)";
+                        badge.style.borderColor = "rgba(245, 158, 11, 0.3)";
+
+                        btnBenchmark.disabled = true;
+                        btnBenchmark.style.opacity = "0.5";
+                        btnBenchmark.style.cursor = "not-allowed";
+
+                        btnImport.className = "btn";
+                    }
+                } catch (err) {
+                    console.error("Failed to check status:", err);
+                }
+            }
+
+            async function runImport() {
+                document.getElementById("btn-import").disabled = true;
+                document
+                    .getElementById("spinner-import")
+                    .classList.remove("hidden");
+                log(
+                    "Starting data import. Resetting schemas and reloading CSV...",
+                );
+
+                try {
+                    const response = await fetch("/api/import", {
+                        method: "POST",
+                    });
+                    const data = await response.json();
+
+                    if (!response.ok)
+                        throw new Error(data.detail || "Import failed");
+
+                    log(
+                        `Import finished! Postgres: ${data.postgres_import_seconds}s, ClickHouse: ${data.clickhouse_import_seconds}s.`,
+                    );
+
+                    document
+                        .getElementById("import-results")
+                        .classList.remove("hidden");
+                    document.getElementById("import-time-pg").innerText =
+                        `${data.postgres_import_seconds} s`;
+                    document.getElementById("import-time-ch").innerText =
+                        `${data.clickhouse_import_seconds} s`;
+                    document.getElementById("import-speedup").innerText =
+                        `${data.import_speedup}x`;
+
+                    const pgTime = data.postgres_import_seconds;
+                    const chTime = data.clickhouse_import_seconds;
+                    const total = pgTime + chTime;
+                    const pgPercent = Math.max(
+                        10,
+                        Math.min(90, (pgTime / total) * 100),
+                    );
+                    const chPercent = 100 - pgPercent;
+                    document.getElementById("bar-import-pg").style.width =
+                        `${pgPercent}%`;
+                    document.getElementById("bar-import-ch").style.width =
+                        `${chPercent}%`;
+                    checkStatus();
+                } catch (err) {
+                    log(`Error: ${err.message}`, true);
+                } finally {
+                    document.getElementById("btn-import").disabled = false;
+                    document
+                        .getElementById("spinner-import")
+                        .classList.add("hidden");
+                }
+            }
+
+            function updateOltpResults(
+                operation,
+                eventId,
+                pgTime,
+                chTime,
+                speedup,
+            ) {
+                document
+                    .getElementById("add-results")
+                    .classList.remove("hidden");
+                document.getElementById("oltp-operation").innerText = operation;
+                document.getElementById("oltp-event-id").innerText = eventId;
+                document.getElementById("oltp-time-pg").innerText =
+                    `${pgTime} ms`;
+                document.getElementById("oltp-time-ch").innerText =
+                    `${chTime} ms`;
+                document.getElementById("oltp-speedup").innerText =
+                    `${speedup}x`;
+
                 const total = pgTime + chTime;
-                const pgPercent = Math.max(10, Math.min(90, (pgTime / total) * 100));
+                const pgPercent = Math.max(
+                    10,
+                    Math.min(90, (pgTime / total) * 100),
+                );
                 const chPercent = 100 - pgPercent;
-                document.getElementById("bar-import-pg").style.width = `${pgPercent}%`;
-                document.getElementById("bar-import-ch").style.width = `${chPercent}%`;
-                checkStatus();
-            } catch (err) {
-                log(`Error: ${err.message}`, true);
-            } finally {
-                document.getElementById("btn-import").disabled = false;
-                document.getElementById("spinner-import").classList.add("hidden");
+                document.getElementById("bar-oltp-pg").style.width =
+                    `${pgPercent}%`;
+                document.getElementById("bar-oltp-ch").style.width =
+                    `${chPercent}%`;
             }
-        }
 
-        function updateOltpResults(operation, eventId, pgTime, chTime, speedup) {
-            document.getElementById("add-results").classList.remove("hidden");
-            document.getElementById("oltp-operation").innerText = operation;
-            document.getElementById("oltp-event-id").innerText = eventId;
-            document.getElementById("oltp-time-pg").innerText = `${pgTime} ms`;
-            document.getElementById("oltp-time-ch").innerText = `${chTime} ms`;
-            document.getElementById("oltp-speedup").innerText = `${speedup}x`;
-            
-            const total = pgTime + chTime;
-            const pgPercent = Math.max(10, Math.min(90, (pgTime / total) * 100));
-            const chPercent = 100 - pgPercent;
-            document.getElementById("bar-oltp-pg").style.width = `${pgPercent}%`;
-            document.getElementById("bar-oltp-ch").style.width = `${chPercent}%`;
-        }
+            async function addEvent() {
+                document
+                    .getElementById("spinner-add")
+                    .classList.remove("hidden");
+                log("Inserting a random event into both databases...");
 
-        async function addEvent() {
-            document.getElementById("spinner-add").classList.remove("hidden");
-            log("Inserting a random event into both databases...");
-            
-            try {
-                const response = await fetch("/api/events/random", { method: "POST" });
-                const data = await response.json();
-                
-                if (!response.ok) throw new Error(data.detail || "Insert failed");
-                
-                log(`Random event inserted. ID: ${data.event_id}. Postgres: ${data.timings_ms.postgres}ms, ClickHouse: ${data.timings_ms.clickhouse}ms.`);
-                updateOltpResults("INSERT", data.event_id, data.timings_ms.postgres, data.timings_ms.clickhouse, data.timings_ms.speedup);
-            } catch (err) {
-                log(`Error: ${err.message}`, true);
-            } finally {
-                document.getElementById("spinner-add").classList.add("hidden");
-            }
-        }
+                try {
+                    const response = await fetch("/api/events/random", {
+                        method: "POST",
+                    });
+                    const data = await response.json();
 
-        async function lookupEvent() {
-            document.getElementById("spinner-lookup").classList.remove("hidden");
-            const eventId = Math.floor(Math.random() * 25000000);
-            log(`Looking up Event ID ${eventId} in both databases...`);
-            
-            try {
-                const response = await fetch(`/api/events/lookup?event_id=${eventId}`);
-                const data = await response.json();
-                
-                if (!response.ok) throw new Error(data.detail || "Lookup failed");
-                
-                log(`Point lookup complete. Postgres: ${data.timings_ms.postgres}ms, ClickHouse: ${data.timings_ms.clickhouse}ms.`);
-                updateOltpResults("SELECT (Point)", eventId, data.timings_ms.postgres, data.timings_ms.clickhouse, data.timings_ms.speedup);
-            } catch (err) {
-                log(`Error: ${err.message}`, true);
-            } finally {
-                document.getElementById("spinner-lookup").classList.add("hidden");
-            }
-        }
+                    if (!response.ok)
+                        throw new Error(data.detail || "Insert failed");
 
-        async function updateEvent() {
-            document.getElementById("spinner-update").classList.remove("hidden");
-            const eventId = Math.floor(Math.random() * 25000000);
-            log(`Updating Event ID ${eventId} (setting random duration)...`);
-            
-            try {
-                const response = await fetch(`/api/events/update?event_id=${eventId}`, { method: "PUT" });
-                const data = await response.json();
-                
-                if (!response.ok) throw new Error(data.detail || "Update failed");
-                
-                log(`Update complete. Postgres: ${data.timings_ms.postgres}ms, ClickHouse: ${data.timings_ms.clickhouse}ms.`);
-                updateOltpResults("UPDATE", eventId, data.timings_ms.postgres, data.timings_ms.clickhouse, data.timings_ms.speedup);
-            } catch (err) {
-                log(`Error: ${err.message}`, true);
-            } finally {
-                document.getElementById("spinner-update").classList.add("hidden");
+                    log(
+                        `Random event inserted. ID: ${data.event_id}. Postgres: ${data.timings_ms.postgres}ms, ClickHouse: ${data.timings_ms.clickhouse}ms.`,
+                    );
+                    updateOltpResults(
+                        "INSERT",
+                        data.event_id,
+                        data.timings_ms.postgres,
+                        data.timings_ms.clickhouse,
+                        data.timings_ms.speedup,
+                    );
+                } catch (err) {
+                    log(`Error: ${err.message}`, true);
+                } finally {
+                    document
+                        .getElementById("spinner-add")
+                        .classList.add("hidden");
+                }
             }
-        }
 
-        async function deleteEvent() {
-            document.getElementById("spinner-delete").classList.remove("hidden");
-            const eventId = Math.floor(Math.random() * 25000000);
-            log(`Deleting Event ID ${eventId} from both databases...`);
-            
-            try {
-                const response = await fetch(`/api/events/delete?event_id=${eventId}`, { method: "DELETE" });
-                const data = await response.json();
-                
-                if (!response.ok) throw new Error(data.detail || "Delete failed");
-                
-                log(`Delete complete. Postgres: ${data.timings_ms.postgres}ms, ClickHouse: ${data.timings_ms.clickhouse}ms.`);
-                updateOltpResults("DELETE", eventId, data.timings_ms.postgres, data.timings_ms.clickhouse, data.timings_ms.speedup);
-            } catch (err) {
-                log(`Error: ${err.message}`, true);
-            } finally {
-                document.getElementById("spinner-delete").classList.add("hidden");
-            }
-        }
+            async function lookupEvent() {
+                document
+                    .getElementById("spinner-lookup")
+                    .classList.remove("hidden");
+                const eventId = Math.floor(Math.random() * 25000000);
+                log(`Looking up Event ID ${eventId} in both databases...`);
 
-        async function calculateCommission() {
-            document.getElementById("btn-calc").disabled = true;
-            document.getElementById("spinner-calc").classList.remove("hidden");
-            
-            const device = document.getElementById("filter-device").value;
-            const event = document.getElementById("filter-event").value;
-            const start = document.getElementById("filter-start").value;
-            const end = document.getElementById("filter-end").value;
-            const isRandomUser = document.getElementById("filter-random-user").checked;
-            
-            let queryParams = [];
-            let userId = null;
-            
-            if (isRandomUser) {
-                userId = Math.floor(Math.random() * 100000) + 1;
-                queryParams.push(`user_id=${userId}`);
-                log(`Randomly selected User ID: ${userId}`);
-            }
-            
-            if (device) queryParams.push(`device=${device}`);
-            if (event) queryParams.push(`event_type=${event}`);
-            if (start) queryParams.push(`start_date=${start}`);
-            if (end) queryParams.push(`end_date=${end}`);
-            
-            const url = "/api/commission" + (queryParams.length ? "?" + queryParams.join("&") : "");
-            log(`Calculating commissions with filters...`);
-            
-            try {
-                const response = await fetch(url);
-                const data = await response.json();
-                
-                if (!response.ok) throw new Error(data.detail || "Calculation failed");
-                
-                log(`Calculation complete. Postgres: ${data.timings_ms.postgres}ms, ClickHouse: ${data.timings_ms.clickhouse}ms.`);
-                
-                document.getElementById("calc-results").classList.remove("hidden");
-                document.getElementById("calc-total").innerText = `$${data.results.total_commission.toLocaleString()}`;
-                document.getElementById("calc-avg").innerText = `$${data.results.average_commission.toFixed(4)}`;
-                document.getElementById("calc-count").innerText = data.results.matching_events_count.toLocaleString();
-                document.getElementById("calc-selected-user").innerText = isRandomUser ? `User ID: ${userId}` : "All Users";
-                document.getElementById("calc-time-pg").innerText = `${data.timings_ms.postgres} ms`;
-                document.getElementById("calc-time-ch").innerText = `${data.timings_ms.clickhouse} ms`;
-                document.getElementById("calc-speedup").innerText = `${data.timings_ms.speedup}x`;
-                
-                const pgTime = data.timings_ms.postgres;
-                const chTime = data.timings_ms.clickhouse;
-                const total = pgTime + chTime;
-                
-                const pgPercent = Math.max(10, Math.min(90, (pgTime / total) * 100));
-                const chPercent = 100 - pgPercent;
-                
-                document.getElementById("bar-pg").style.width = `${pgPercent}%`;
-                document.getElementById("bar-ch").style.width = `${chPercent}%`;
-            } catch (err) {
-                log(`Error: ${err.message}`, true);
-            } finally {
-                document.getElementById("btn-calc").disabled = false;
-                document.getElementById("spinner-calc").classList.add("hidden");
-            }
-        }
+                try {
+                    const response = await fetch(
+                        `/api/events/lookup?event_id=${eventId}`,
+                    );
+                    const data = await response.json();
 
-        async function runBenchmark() {
-            document.getElementById("btn-benchmark").disabled = true;
-            document.getElementById("spinner-benchmark").classList.remove("hidden");
-            log("Running Postgres vs ClickHouse benchmark suite (3 runs + warm-up)...");
-            
-            try {
-                const response = await fetch("/api/benchmark");
-                const data = await response.json();
-                
-                if (!response.ok) throw new Error(data.detail || "Benchmark failed");
-                
-                log("Benchmark finished successfully.");
-                renderBenchmarkResults(data.benchmark_results);
-            } catch (err) {
-                log(`Error: ${err.message}`, true);
-            } finally {
-                document.getElementById("btn-benchmark").disabled = false;
-                document.getElementById("spinner-benchmark").classList.add("hidden");
+                    if (!response.ok)
+                        throw new Error(data.detail || "Lookup failed");
+
+                    log(
+                        `Point lookup complete. Postgres: ${data.timings_ms.postgres}ms, ClickHouse: ${data.timings_ms.clickhouse}ms.`,
+                    );
+                    updateOltpResults(
+                        "SELECT (Point)",
+                        eventId,
+                        data.timings_ms.postgres,
+                        data.timings_ms.clickhouse,
+                        data.timings_ms.speedup,
+                    );
+                } catch (err) {
+                    log(`Error: ${err.message}`, true);
+                } finally {
+                    document
+                        .getElementById("spinner-lookup")
+                        .classList.add("hidden");
+                }
             }
-        }
-        async function addEventsBatch() {
-            document.getElementById("spinner-batch-insert").classList.remove("hidden");
-            const count = document.getElementById("batch-count").value;
-            log(`Inserting batch of ${parseInt(count).toLocaleString()} events to both databases...`);
-            
-            try {
-                const response = await fetch(`/api/events/batch?count=${count}`, {
-                    method: "POST"
-                });
-                const data = await response.json();
-                
-                if (!response.ok) throw new Error(data.detail || "Batch insertion failed");
-                
-                log(`Batch inserted. Postgres: ${data.timings_ms.postgres}ms, ClickHouse: ${data.timings_ms.clickhouse}ms.`);
-                
-                document.getElementById("batch-results").classList.remove("hidden");
-                document.getElementById("batch-inserted").innerText = data.rows_inserted.toLocaleString();
-                document.getElementById("batch-time-pg").innerText = `${data.timings_ms.postgres} ms`;
-                document.getElementById("batch-time-ch").innerText = `${data.timings_ms.clickhouse} ms`;
-                document.getElementById("batch-speedup").innerText = `${data.timings_ms.speedup}x`;
-                
-                const pgTime = data.timings_ms.postgres;
-                const chTime = data.timings_ms.clickhouse;
-                const total = pgTime + chTime;
-                const pgPercent = Math.max(10, Math.min(90, (pgTime / total) * 100));
-                const chPercent = 100 - pgPercent;
-                document.getElementById("bar-batch-pg").style.width = `${pgPercent}%`;
-                document.getElementById("bar-batch-ch").style.width = `${chPercent}%`;
-            } catch (err) {
-                log(`Error: ${err.message}`, true);
-            } finally {
-                document.getElementById("spinner-batch-insert").classList.add("hidden");
+
+            async function updateEvent() {
+                document
+                    .getElementById("spinner-update")
+                    .classList.remove("hidden");
+                const eventId = Math.floor(Math.random() * 25000000);
+                log(
+                    `Updating Event ID ${eventId} (setting random duration)...`,
+                );
+
+                try {
+                    const response = await fetch(
+                        `/api/events/update?event_id=${eventId}`,
+                        { method: "PUT" },
+                    );
+                    const data = await response.json();
+
+                    if (!response.ok)
+                        throw new Error(data.detail || "Update failed");
+
+                    log(
+                        `Update complete. Postgres: ${data.timings_ms.postgres}ms, ClickHouse: ${data.timings_ms.clickhouse}ms.`,
+                    );
+                    updateOltpResults(
+                        "UPDATE",
+                        eventId,
+                        data.timings_ms.postgres,
+                        data.timings_ms.clickhouse,
+                        data.timings_ms.speedup,
+                    );
+                } catch (err) {
+                    log(`Error: ${err.message}`, true);
+                } finally {
+                    document
+                        .getElementById("spinner-update")
+                        .classList.add("hidden");
+                }
             }
-        }
-        function renderBenchmarkResults(results) {
-            document.getElementById("benchmark-results-container").classList.remove("hidden");
-            const tbody = document.querySelector("#results-table tbody");
-            tbody.innerHTML = "";
-            
-            const labels = [];
-            const pgData = [];
-            const chData = [];
-            
-            results.forEach(res => {
-                labels.push(res.query_name);
-                pgData.push(res.postgres.min_ms);
-                chData.push(res.clickhouse.min_ms);
-                
-                const row = `
+
+            async function deleteEvent() {
+                document
+                    .getElementById("spinner-delete")
+                    .classList.remove("hidden");
+                const eventId = Math.floor(Math.random() * 25000000);
+                log(`Deleting Event ID ${eventId} from both databases...`);
+
+                try {
+                    const response = await fetch(
+                        `/api/events/delete?event_id=${eventId}`,
+                        { method: "DELETE" },
+                    );
+                    const data = await response.json();
+
+                    if (!response.ok)
+                        throw new Error(data.detail || "Delete failed");
+
+                    log(
+                        `Delete complete. Postgres: ${data.timings_ms.postgres}ms, ClickHouse: ${data.timings_ms.clickhouse}ms.`,
+                    );
+                    updateOltpResults(
+                        "DELETE",
+                        eventId,
+                        data.timings_ms.postgres,
+                        data.timings_ms.clickhouse,
+                        data.timings_ms.speedup,
+                    );
+                } catch (err) {
+                    log(`Error: ${err.message}`, true);
+                } finally {
+                    document
+                        .getElementById("spinner-delete")
+                        .classList.add("hidden");
+                }
+            }
+
+            async function calculateCommission() {
+                document.getElementById("btn-calc").disabled = true;
+                document
+                    .getElementById("spinner-calc")
+                    .classList.remove("hidden");
+
+                const device = document.getElementById("filter-device").value;
+                const event = document.getElementById("filter-event").value;
+                const start = document.getElementById("filter-start").value;
+                const end = document.getElementById("filter-end").value;
+                const isRandomUser =
+                    document.getElementById("filter-random-user").checked;
+
+                let queryParams = [];
+                let userId = null;
+
+                if (isRandomUser) {
+                    userId = Math.floor(Math.random() * 100000) + 1;
+                    queryParams.push(`user_id=${userId}`);
+                    log(`Randomly selected User ID: ${userId}`);
+                }
+
+                if (device) queryParams.push(`device=${device}`);
+                if (event) queryParams.push(`event_type=${event}`);
+                if (start) queryParams.push(`start_date=${start}`);
+                if (end) queryParams.push(`end_date=${end}`);
+
+                const url =
+                    "/api/commission" +
+                    (queryParams.length ? "?" + queryParams.join("&") : "");
+                log(`Calculating commissions with filters...`);
+
+                try {
+                    const response = await fetch(url);
+                    const data = await response.json();
+
+                    if (!response.ok)
+                        throw new Error(data.detail || "Calculation failed");
+
+                    log(
+                        `Calculation complete. Postgres: ${data.timings_ms.postgres}ms, ClickHouse: ${data.timings_ms.clickhouse}ms.`,
+                    );
+
+                    document
+                        .getElementById("calc-results")
+                        .classList.remove("hidden");
+                    document.getElementById("calc-total").innerText =
+                        `$${data.results.total_commission.toLocaleString()}`;
+                    document.getElementById("calc-avg").innerText =
+                        `$${data.results.average_commission.toFixed(4)}`;
+                    document.getElementById("calc-count").innerText =
+                        data.results.matching_events_count.toLocaleString();
+                    document.getElementById("calc-selected-user").innerText =
+                        isRandomUser ? `User ID: ${userId}` : "All Users";
+                    document.getElementById("calc-time-pg").innerText =
+                        `${data.timings_ms.postgres} ms`;
+                    document.getElementById("calc-time-ch").innerText =
+                        `${data.timings_ms.clickhouse} ms`;
+                    document.getElementById("calc-speedup").innerText =
+                        `${data.timings_ms.speedup}x`;
+
+                    const pgTime = data.timings_ms.postgres;
+                    const chTime = data.timings_ms.clickhouse;
+                    const total = pgTime + chTime;
+
+                    const pgPercent = Math.max(
+                        10,
+                        Math.min(90, (pgTime / total) * 100),
+                    );
+                    const chPercent = 100 - pgPercent;
+
+                    document.getElementById("bar-pg").style.width =
+                        `${pgPercent}%`;
+                    document.getElementById("bar-ch").style.width =
+                        `${chPercent}%`;
+                } catch (err) {
+                    log(`Error: ${err.message}`, true);
+                } finally {
+                    document.getElementById("btn-calc").disabled = false;
+                    document
+                        .getElementById("spinner-calc")
+                        .classList.add("hidden");
+                }
+            }
+
+            async function runBenchmark() {
+                document.getElementById("btn-benchmark").disabled = true;
+                document
+                    .getElementById("spinner-benchmark")
+                    .classList.remove("hidden");
+                log(
+                    "Running Postgres vs ClickHouse benchmark suite (3 runs + warm-up)...",
+                );
+
+                try {
+                    const response = await fetch("/api/benchmark");
+                    const data = await response.json();
+
+                    if (!response.ok)
+                        throw new Error(data.detail || "Benchmark failed");
+
+                    log("Benchmark finished successfully.");
+                    renderBenchmarkResults(data.benchmark_results);
+                } catch (err) {
+                    log(`Error: ${err.message}`, true);
+                } finally {
+                    document.getElementById("btn-benchmark").disabled = false;
+                    document
+                        .getElementById("spinner-benchmark")
+                        .classList.add("hidden");
+                }
+            }
+            async function addEventsBatch() {
+                document
+                    .getElementById("spinner-batch-insert")
+                    .classList.remove("hidden");
+                const count = document.getElementById("batch-count").value;
+                log(
+                    `Inserting batch of ${parseInt(count).toLocaleString()} events to both databases...`,
+                );
+
+                try {
+                    const response = await fetch(
+                        `/api/events/batch?count=${count}`,
+                        {
+                            method: "POST",
+                        },
+                    );
+                    const data = await response.json();
+
+                    if (!response.ok)
+                        throw new Error(
+                            data.detail || "Batch insertion failed",
+                        );
+
+                    log(
+                        `Batch inserted. Postgres: ${data.timings_ms.postgres}ms, ClickHouse: ${data.timings_ms.clickhouse}ms.`,
+                    );
+
+                    document
+                        .getElementById("batch-results")
+                        .classList.remove("hidden");
+                    document.getElementById("batch-inserted").innerText =
+                        data.rows_inserted.toLocaleString();
+                    document.getElementById("batch-time-pg").innerText =
+                        `${data.timings_ms.postgres} ms`;
+                    document.getElementById("batch-time-ch").innerText =
+                        `${data.timings_ms.clickhouse} ms`;
+                    document.getElementById("batch-speedup").innerText =
+                        `${data.timings_ms.speedup}x`;
+
+                    const pgTime = data.timings_ms.postgres;
+                    const chTime = data.timings_ms.clickhouse;
+                    const total = pgTime + chTime;
+                    const pgPercent = Math.max(
+                        10,
+                        Math.min(90, (pgTime / total) * 100),
+                    );
+                    const chPercent = 100 - pgPercent;
+                    document.getElementById("bar-batch-pg").style.width =
+                        `${pgPercent}%`;
+                    document.getElementById("bar-batch-ch").style.width =
+                        `${chPercent}%`;
+                } catch (err) {
+                    log(`Error: ${err.message}`, true);
+                } finally {
+                    document
+                        .getElementById("spinner-batch-insert")
+                        .classList.add("hidden");
+                }
+            }
+            function renderBenchmarkResults(results) {
+                document
+                    .getElementById("benchmark-results-container")
+                    .classList.remove("hidden");
+                const tbody = document.querySelector("#results-table tbody");
+                tbody.innerHTML = "";
+
+                const labels = [];
+                const pgData = [];
+                const chData = [];
+
+                results.forEach((res) => {
+                    labels.push(res.query_name);
+                    pgData.push(res.postgres.min_ms);
+                    chData.push(res.clickhouse.min_ms);
+
+                    const row = `
                     <tr>
                         <td><strong>${res.query_name}</strong><br><small style="color: var(--text-secondary); font-family: monospace;">${res.sql}</small></td>
                         <td style="color: var(--postgres-color); font-weight: 600;">${res.postgres.min_ms.toFixed(2)} ms</td>
@@ -853,73 +1247,75 @@
                         <td><span class="speedup-badge">${res.speedup}x</span></td>
                     </tr>
                 `;
-                tbody.innerHTML += row;
-            });
-            
-            if (myChart) {
-                myChart.destroy();
-            }
-            
-            const ctx = document.getElementById('benchmarkChart').getContext('2d');
-            myChart = new Chart(ctx, {
-                type: 'bar',
-                data: {
-                    labels: labels,
-                    datasets: [
-                        {
-                            label: 'PostgreSQL (ms)',
-                            data: pgData,
-                            backgroundColor: '#3b82f6',
-                            borderColor: '#3b82f6',
-                            borderWidth: 1
-                        },
-                        {
-                            label: 'ClickHouse (ms)',
-                            data: chData,
-                            backgroundColor: '#f97316',
-                            borderColor: '#f97316',
-                            borderWidth: 1
-                        }
-                    ]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    scales: {
-                        y: {
-                            type: 'logarithmic',
-                            title: {
-                                display: true,
-                                text: 'Latency (ms) - Log scale'
-                            },
-                            grid: {
-                                color: '#334155'
-                            },
-                            ticks: {
-                                color: '#94a3b8'
-                            }
-                        },
-                        x: {
-                            grid: {
-                                display: false
-                            },
-                            ticks: {
-                                color: '#94a3b8'
-                            }
-                        }
-                    },
-                    plugins: {
-                        legend: {
-                            labels: {
-                                color: '#f8fafc'
-                            }
-                        }
-                    }
-                }
-            });
-        }
+                    tbody.innerHTML += row;
+                });
 
-        checkStatus();
-    </script>
-</body>
+                if (myChart) {
+                    myChart.destroy();
+                }
+
+                const ctx = document
+                    .getElementById("benchmarkChart")
+                    .getContext("2d");
+                myChart = new Chart(ctx, {
+                    type: "bar",
+                    data: {
+                        labels: labels,
+                        datasets: [
+                            {
+                                label: "PostgreSQL (ms)",
+                                data: pgData,
+                                backgroundColor: "#3b82f6",
+                                borderColor: "#3b82f6",
+                                borderWidth: 1,
+                            },
+                            {
+                                label: "ClickHouse (ms)",
+                                data: chData,
+                                backgroundColor: "#f97316",
+                                borderColor: "#f97316",
+                                borderWidth: 1,
+                            },
+                        ],
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        scales: {
+                            y: {
+                                type: "logarithmic",
+                                title: {
+                                    display: true,
+                                    text: "Latency (ms) - Log scale",
+                                },
+                                grid: {
+                                    color: "#334155",
+                                },
+                                ticks: {
+                                    color: "#94a3b8",
+                                },
+                            },
+                            x: {
+                                grid: {
+                                    display: false,
+                                },
+                                ticks: {
+                                    color: "#94a3b8",
+                                },
+                            },
+                        },
+                        plugins: {
+                            legend: {
+                                labels: {
+                                    color: "#f8fafc",
+                                },
+                            },
+                        },
+                    },
+                });
+            }
+
+            checkStatus();
+        </script>
+    </body>
 </html>
