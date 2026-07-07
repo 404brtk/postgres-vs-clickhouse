@@ -1,6 +1,7 @@
 import time
 import subprocess
 import os
+import hashlib
 from datetime import datetime, timedelta
 from typing import Union
 from pydantic import BaseModel
@@ -60,6 +61,16 @@ QUERIES = [
         "id": "q6",
         "name": "Distinct users who liked something on tablet in April",
         "sql": "SELECT COUNT(DISTINCT user_id) FROM user_events WHERE device = 'tablet' AND is_liked = 1 AND event_time >= '2026-04-01 00:00:00' AND event_time < '2026-05-01 00:00:00';"
+    },
+    {
+        "id": "q7",
+        "name": "Average events per session (user per day)",
+        "sql": "SELECT AVG(cnt) FROM (SELECT user_id, CAST(event_time AS DATE) AS d, COUNT(*) AS cnt FROM user_events GROUP BY user_id, d) s;"
+    },
+    {
+        "id": "q8",
+        "name": "Bounce rate (sessions with a single event)",
+        "sql": "SELECT ROUND(SUM(CASE WHEN cnt = 1 THEN 1 ELSE 0 END) * 100.0 / COUNT(*), 2) FROM (SELECT user_id, CAST(event_time AS DATE) AS d, COUNT(*) AS cnt FROM user_events GROUP BY user_id, d) s;"
     }
 ]
 
@@ -130,7 +141,9 @@ def run_import():
                         is_liked INT,
                         event_time TIMESTAMP,
                         device VARCHAR(10),
-                        commission NUMERIC(10, 2)
+                        commission NUMERIC(10, 2),
+                        pathname VARCHAR(500) DEFAULT '',
+                        referrer VARCHAR(500) DEFAULT ''
                     );
                     CREATE INDEX idx_user_events_event_id ON user_events (event_id);
                 """)
@@ -158,7 +171,9 @@ def run_import():
                 is_liked Int8,
                 event_time DateTime,
                 device LowCardinality(String),
-                commission Decimal(10, 2)
+                commission Decimal(10, 2),
+                pathname LowCardinality(String) DEFAULT '',
+                referrer LowCardinality(String) DEFAULT ''
             ) ENGINE = MergeTree()
             ORDER BY (category_id, event_time, user_id);
         """)
@@ -202,18 +217,18 @@ def run_import():
     }
 
 class EventPayload(BaseModel):
-    user_id: int | None = None
     target_id: int | None = 0
     category_id: int | None = 0
     event_type: str
     duration_sec: int | None = 0
     is_liked: int | None = 0
     device: str | None = "desktop"
+    pathname: str = ""
+    referrer: str = ""
     commission: float | None = 0.0
 
 @app.post("/api/events")
 def create_events(payload: Union[EventPayload, list[EventPayload]], request: Request):
-    import hashlib
     events = [payload] if isinstance(payload, EventPayload) else payload
     
     client_ip = request.client.host if request.client else "127.0.0.1"
@@ -228,12 +243,12 @@ def create_events(payload: Union[EventPayload, list[EventPayload]], request: Req
     for ev in events:
         event_id = random.randint(1000000000, 9999999999)
         event_time = datetime.now()
-        user_id = ev.user_id if ev.user_id is not None else session_hash
+        user_id = session_hash
         commission = ev.commission if ev.commission is not None else 0.0
         prepared_rows.append((
             event_id, user_id, ev.target_id or 0, ev.category_id or 0,
             ev.event_type, ev.duration_sec or 0, ev.is_liked or 0, event_time,
-            ev.device or "desktop", commission
+            ev.device or "desktop", commission, ev.pathname, ev.referrer
         ))
         
     start_pg = time.perf_counter()
@@ -242,8 +257,8 @@ def create_events(payload: Union[EventPayload, list[EventPayload]], request: Req
             with conn.cursor() as cur:
                 cur.executemany(
                     """
-                    INSERT INTO user_events (event_id, user_id, target_id, category_id, event_type, duration_sec, is_liked, event_time, device, commission)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s);
+                    INSERT INTO user_events (event_id, user_id, target_id, category_id, event_type, duration_sec, is_liked, event_time, device, commission, pathname, referrer)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s);
                     """,
                     prepared_rows
                 )
@@ -264,7 +279,7 @@ def create_events(payload: Union[EventPayload, list[EventPayload]], request: Req
         ch_client.insert(
             "user_events",
             data=prepared_rows,
-            column_names=["event_id", "user_id", "target_id", "category_id", "event_type", "duration_sec", "is_liked", "event_time", "device", "commission"]
+            column_names=["event_id", "user_id", "target_id", "category_id", "event_type", "duration_sec", "is_liked", "event_time", "device", "commission", "pathname", "referrer"]
         )
         ch_client.close()
     except Exception as e:

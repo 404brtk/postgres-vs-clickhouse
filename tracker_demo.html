@@ -41,31 +41,6 @@
                 font-weight: normal;
             }
 
-            .controls {
-                display: flex;
-                gap: 15px;
-                margin-bottom: 15px;
-                align-items: center;
-                flex-wrap: wrap;
-            }
-
-            .control-group {
-                display: flex;
-                align-items: center;
-                gap: 5px;
-            }
-
-            select,
-            input {
-                background-color: #111827;
-                border: 1px solid #374151;
-                color: #f3f4f6;
-                padding: 4px 8px;
-                font-family: inherit;
-                font-size: 12px;
-                outline: none;
-            }
-
             button {
                 background-color: #1f2937;
                 border: 1px solid #374151;
@@ -134,18 +109,6 @@
                 >
             </header>
 
-            <div class="controls">
-                <div class="control-group">
-                    <span>User ID:</span>
-                    <input
-                        type="number"
-                        id="input-userid"
-                        placeholder="Auto"
-                        style="width: 70px"
-                    />
-                </div>
-            </div>
-
             <div class="actions">
                 <button data-event="view" data-target="19896" data-category="9">
                     Simulate View
@@ -202,9 +165,12 @@
 
             window.addEventListener("tracker:track", (e) => {
                 const ev = e.detail.event;
+                const duration = ev.duration_sec
+                    ? `, duration: ${ev.duration_sec}s`
+                    : "";
                 appendLog(
                     "track",
-                    `Captured "${ev.event_type}" (target: ${ev.target_id}, category: ${ev.category_id}, user_id: ${ev.user_id})`,
+                    `Captured "${ev.event_type}" (target: ${ev.target_id}, category: ${ev.category_id}${duration}, page: ${ev.pathname})`,
                 );
             });
 
@@ -224,32 +190,6 @@
                     `Ingested "${ev.event_type}" | PG: ${pg.toFixed(1)}ms | CH: ${ch.toFixed(1)}ms | Winner: ${winner}`,
                 );
             });
-
-            let debounceTimer = null;
-            document
-                .getElementById("input-userid")
-                .addEventListener("input", (e) => {
-                    clearTimeout(debounceTimer);
-                    debounceTimer = setTimeout(() => {
-                        const userId = e.target.value.trim();
-                        const trackerScript =
-                            document.getElementById("tracker-script");
-                        if (trackerScript) {
-                            if (userId) {
-                                trackerScript.setAttribute(
-                                    "data-user-id",
-                                    userId,
-                                );
-                            } else {
-                                trackerScript.removeAttribute("data-user-id");
-                            }
-                            appendLog(
-                                "system",
-                                `User ID updated to: ${userId || "Auto (Session)"}`,
-                            );
-                        }
-                    }, 500);
-                });
         </script>
     </body>
 </html>

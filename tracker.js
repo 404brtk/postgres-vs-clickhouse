@@ -11,6 +11,8 @@
         ? currentScript.getAttribute("data-endpoint") || ""
         : "";
 
+    let entryTime = performance.now();
+
     function getDeviceType() {
         const ua = navigator.userAgent.toLowerCase();
         if (/(tablet|ipad|playbook|silk)|(android(?!.*mobi))/i.test(ua)) {
@@ -48,21 +50,16 @@
         }
     }
 
-    function track(eventType, properties = {}) {
-        const scriptTag =
-            document.getElementById("tracker-script") || document.currentScript;
-        const userId = scriptTag
-            ? scriptTag.getAttribute("data-user-id")
-            : null;
-
+    function buildEvent(eventType, properties = {}) {
         const event = {
-            user_id: userId ? parseInt(userId, 10) : null,
             target_id: parseInt(properties.target_id, 10) || 0,
             category_id: parseInt(properties.category_id, 10) || 0,
             event_type: eventType,
             duration_sec: parseInt(properties.duration_sec, 10) || 0,
             is_liked: properties.is_liked ? 1 : 0,
             device: getDeviceType(),
+            pathname: window.location.pathname,
+            referrer: document.referrer,
             commission: parseFloat(properties.commission) || 0.0,
         };
 
@@ -74,13 +71,34 @@
                 Math.round((Math.random() * 4.5 + 0.5) * 100) / 100;
         }
 
+        return event;
+    }
+
+    function track(eventType, properties = {}) {
+        const event = buildEvent(eventType, properties);
         window.dispatchEvent(
             new CustomEvent("tracker:track", {
                 detail: { event },
             }),
         );
-
         send(event);
+    }
+
+    let exitSent = false;
+    function sendExit() {
+        if (exitSent) return;
+        exitSent = true;
+        const durationSec = Math.round((performance.now() - entryTime) / 1000);
+        const event = buildEvent("exit", { duration_sec: durationSec });
+        const blob = new Blob([JSON.stringify(event)], {
+            type: "application/json",
+        });
+        navigator.sendBeacon(`${apiEndpoint}/api/events`, blob);
+        window.dispatchEvent(
+            new CustomEvent("tracker:track", {
+                detail: { event },
+            }),
+        );
     }
 
     track("pageview", {
@@ -107,5 +125,15 @@
             duration_sec: duration,
             commission: commission,
         });
+    });
+
+    document.addEventListener("pagehide", sendExit);
+    document.addEventListener("visibilitychange", function () {
+        if (document.visibilityState === "hidden") {
+            sendExit();
+        } else {
+            exitSent = false;
+            entryTime = performance.now();
+        }
     });
 })();
