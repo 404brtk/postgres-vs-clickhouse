@@ -12,3 +12,6 @@ wheels/
 
 *.csv
 *.txt
+
+# Secrets
+.secret_key
