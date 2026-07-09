@@ -2,17 +2,6 @@ from datetime import datetime
 from typing import Any, Literal
 from pydantic import BaseModel
 
-class EventPayload(BaseModel):
-    target_id: int | None = 0
-    category_id: int | None = 0
-    event_type: str
-    duration_sec: int | None = 0
-    is_liked: int | None = 0
-    device: str | None = "desktop"
-    pathname: str = ""
-    referrer: str = ""
-    commission: float | None = 0.0
-
 class GenericEvent(BaseModel):
     event_type: str
     device: str | None = "desktop"
@@ -36,7 +25,6 @@ class FilterSpec(BaseModel):
 
 class QuerySpec(BaseModel):
     target_db: Literal["clickhouse", "postgres"] = "clickhouse"
-    target_table: Literal["generic_events", "user_events"] = "generic_events"
     start_date: datetime | None = None
     end_date: datetime | None = None
     metrics: list[MetricSpec]
@@ -45,7 +33,6 @@ class QuerySpec(BaseModel):
     limit: int | None = 100
 
 class CompareQuerySpec(BaseModel):
-    target_table: Literal["generic_events", "user_events"] = "generic_events"
     start_date: datetime | None = None
     end_date: datetime | None = None
     metrics: list[MetricSpec]

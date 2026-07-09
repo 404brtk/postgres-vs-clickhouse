@@ -5,7 +5,7 @@ from fastapi.staticfiles import StaticFiles
 import psycopg
 import clickhouse_connect
 from config import PG_DSN, CH_HOST, CH_PORT, CH_USER, CH_PASSWORD, CH_DB
-from routers import pages, benchmark, analytics
+from routers import pages, analytics
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -13,7 +13,7 @@ async def lifespan(app: FastAPI):
         with psycopg.connect(PG_DSN) as conn:
             with conn.cursor() as cur:
                 cur.execute("""
-                    CREATE TABLE IF NOT EXISTS generic_events (
+                    CREATE TABLE IF NOT EXISTS events (
                         event_id BIGINT PRIMARY KEY,
                         user_id INT,
                         event_type VARCHAR(100),
@@ -24,8 +24,7 @@ async def lifespan(app: FastAPI):
                         duration_sec INT DEFAULT 0,
                         properties JSONB
                     );
-                    ALTER TABLE generic_events ADD COLUMN IF NOT EXISTS duration_sec INT DEFAULT 0;
-                    CREATE INDEX IF NOT EXISTS idx_generic_events_type_time ON generic_events (event_type, event_time);
+                    CREATE INDEX IF NOT EXISTS idx_events_type_time ON events (event_type, event_time);
                 """)
                 conn.commit()
     except Exception:
@@ -40,7 +39,7 @@ async def lifespan(app: FastAPI):
             database=CH_DB
         )
         ch_client.command("""
-            CREATE TABLE IF NOT EXISTS generic_events (
+            CREATE TABLE IF NOT EXISTS events (
                 event_id Int64,
                 user_id Int32,
                 event_type LowCardinality(String),
@@ -53,10 +52,6 @@ async def lifespan(app: FastAPI):
             ) ENGINE = MergeTree()
             ORDER BY (event_type, event_time, user_id);
         """)
-        try:
-            ch_client.command("ALTER TABLE generic_events ADD COLUMN IF NOT EXISTS duration_sec Int32 DEFAULT 0;")
-        except Exception:
-            pass
         ch_client.close()
     except Exception:
         pass
@@ -75,5 +70,4 @@ app.add_middleware(
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 app.include_router(pages.router)
-app.include_router(benchmark.router)
 app.include_router(analytics.router)

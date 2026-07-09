@@ -1,31 +1,31 @@
-# Postgres 18 vs ClickHouse Benchmark Results
+# Generic Analytics Microservice (Postgres vs ClickHouse)
 
-This repository contains benchmark results comparing **PostgreSQL 18** and **ClickHouse** on a generated dataset of user events.
+A lightweight, schema-less event tracking and analytics microservice that records telemetry in parallel to **PostgreSQL** and **ClickHouse** and exposes a dynamic SQL query compiler.
 
 ---
 
 ## How to Run
 
-```bash
-docker-compose up -d
-uv sync
-uv run python generate-data.py
-uv run uvicorn main:app --reload
-```
+1. Start the databases:
+    ```bash
+    docker-compose up -d
+    ```
+2. Install dependencies:
+    ```bash
+    uv sync
+    ```
+3. Run the server:
+    ```bash
+    uv run uvicorn main:app --reload
+    ```
 
-Open **`http://127.0.0.1:8000/`** in your browser to view the web dashboard.
-
-Alternatively, you can run the entire benchmark suite from the command line and save the results to a file:
-
-```bash
-uv run python run_benchmark_cli.py
-```
+Open **`http://127.0.0.1:8000/`** to access the Analytics Console dashboard.
 
 ---
 
 ## Live Tracker Demo
 
-The repository includes a lightweight, no-code JavaScript tracker (`tracker.js`) and an interactive console (`tracker_demo.html`). To view the live tracking logs and compare ingestion latency, navigate to **`http://127.0.0.1:8000/demo`** in your browser.
+The repository includes a lightweight, no-code JavaScript tracker (`tracker.js`) and an interactive console (`tracker_demo.html`). To view the live tracking logs, navigate to **`http://127.0.0.1:8000/demo`** in your browser.
 
 ---
 
@@ -67,3 +67,63 @@ For bulk data loading, ClickHouse's column-oriented design scales significantly 
 | **Insert Batch (50,000 events)**    |    169.89 ms    |    66.19 ms     | **2.57x** (ClickHouse) |
 | **Insert Batch (100,000 events)**   |    294.65 ms    |    96.24 ms     | **3.06x** (ClickHouse) |
 | **Insert Batch (1,000,000 events)** |   2851.14 ms    |    838.35 ms    | **3.40x** (ClickHouse) |
+
+---
+
+## Querying Dynamic Aggregations (cURL Examples)
+
+You can query dynamic metrics, filters, and groupings directly from external business applications via `POST /api/analytics/query` or `POST /api/analytics/compare`.
+
+### Example 1: Basic Pageviews & Unique Visitors
+
+Count all `pageview` events grouped by URL pathname:
+
+```bash
+curl -X POST http://127.0.0.1:8000/api/analytics/query \
+  -H "Content-Type: application/json" \
+  -d '{
+    "metrics": [
+      { "type": "count", "field": "event_id", "alias": "total_views" },
+      { "type": "uniq", "field": "user_id", "alias": "unique_visitors" }
+    ],
+    "group_by": ["pathname"],
+    "filters": [
+      { "field": "event_type", "operator": "eq", "value": "pageview" }
+    ]
+  }'
+```
+
+### Example 2: Aggregate Dynamic Properties
+
+Aggregate custom properties (such as `scroll_depth` or `commission`) stored inside the database map columns:
+
+```bash
+curl -X POST http://127.0.0.1:8000/api/analytics/query \
+  -H "Content-Type: application/json" \
+  -d '{
+    "metrics": [
+      { "type": "avg", "field": "properties.scroll_depth", "alias": "avg_scroll_pct" },
+      { "type": "sum", "field": "properties.commission", "alias": "total_commissions" }
+    ],
+    "group_by": ["device"],
+    "filters": []
+  }'
+```
+
+### Example 3: Compare Database Speed
+
+Measure execution times between Postgres and ClickHouse for custom analytics queries:
+
+```bash
+curl -X POST http://127.0.0.1:8000/api/analytics/compare \
+  -H "Content-Type: application/json" \
+  -d '{
+    "metrics": [
+      { "type": "avg", "field": "duration_sec", "alias": "avg_session_duration" }
+    ],
+    "group_by": ["pathname"],
+    "filters": [
+      { "field": "event_type", "operator": "eq", "value": "exit" }
+    ]
+  }'
+```

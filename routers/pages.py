@@ -12,8 +12,3 @@ def get_dashboard():
 def get_tracker_demo():
     with open("static/tracker_demo.html", "r") as f:
         return HTMLResponse(content=f.read())
-
-@router.get("/demo/analytics", response_class=HTMLResponse)
-def get_analytics_demo():
-    with open("static/analytics_demo.html", "r") as f:
-        return HTMLResponse(content=f.read())

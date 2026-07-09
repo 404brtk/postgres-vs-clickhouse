@@ -26,7 +26,7 @@ def resolve_field(field_name: str, db_type: str, for_numeric_aggregation: bool =
     raise ValueError(f"Invalid field name: {field_name}")
 
 @router.post("/api/analytics/ingest")
-def create_generic_events(payload: Union[GenericEvent, list[GenericEvent]], request: Request):
+def create_events(payload: Union[GenericEvent, list[GenericEvent]], request: Request):
     events = [payload] if isinstance(payload, GenericEvent) else payload
     
     client_ip = request.client.host if request.client else "127.0.0.1"
@@ -63,7 +63,7 @@ def create_generic_events(payload: Union[GenericEvent, list[GenericEvent]], requ
                 ]
                 cur.executemany(
                     """
-                    INSERT INTO generic_events (event_id, user_id, event_type, event_time, device, pathname, referrer, duration_sec, properties)
+                    INSERT INTO events (event_id, user_id, event_type, event_time, device, pathname, referrer, duration_sec, properties)
                     VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s);
                     """,
                     pg_rows
@@ -79,7 +79,7 @@ def create_generic_events(payload: Union[GenericEvent, list[GenericEvent]], requ
     try:
         ch_client = get_ch_client()
         ch_client.insert(
-            "generic_events",
+            "events",
             data=prepared_rows,
             column_names=["event_id", "user_id", "event_type", "event_time", "device", "pathname", "referrer", "duration_sec", "properties"]
         )
@@ -107,7 +107,7 @@ def clear_analytics_data():
     try:
         with get_pg_connection() as conn:
             with conn.cursor() as cur:
-                cur.execute("TRUNCATE TABLE generic_events;")
+                cur.execute("TRUNCATE TABLE events;")
                 conn.commit()
                 pg_success = True
     except Exception:
@@ -115,7 +115,7 @@ def clear_analytics_data():
     ch_success = False
     try:
         ch_client = get_ch_client()
-        ch_client.command("TRUNCATE TABLE generic_events;")
+        ch_client.command("TRUNCATE TABLE events;")
         ch_client.close()
         ch_success = True
     except Exception:
@@ -217,7 +217,7 @@ def compile_sql_query(spec: Union[QuerySpec, CompareQuerySpec], db: str) -> tupl
     group_by_clause = f"GROUP BY {', '.join(group_by_cols)}" if group_by_cols else ""
     limit_clause = f"LIMIT {int(spec.limit)}" if spec.limit is not None else ""
     
-    query_sql = f"SELECT {select_clause} FROM {spec.target_table} {where_clause} {group_by_clause} {limit_clause};"
+    query_sql = f"SELECT {select_clause} FROM events {where_clause} {group_by_clause} {limit_clause};"
     return query_sql, params
 
 @router.post("/api/analytics/query")
@@ -263,7 +263,7 @@ def get_available_properties():
     keys = set()
     try:
         ch_client = get_ch_client()
-        res = ch_client.query("SELECT DISTINCT arrayJoin(mapKeys(properties)) AS key FROM generic_events;")
+        res = ch_client.query("SELECT DISTINCT arrayJoin(mapKeys(properties)) AS key FROM events;")
         for row in res.result_rows:
             keys.add(row[0])
         ch_client.close()
@@ -272,7 +272,7 @@ def get_available_properties():
     try:
         with get_pg_connection() as conn:
             with conn.cursor() as cur:
-                cur.execute("SELECT DISTINCT jsonb_object_keys(properties) AS key FROM generic_events;")
+                cur.execute("SELECT DISTINCT jsonb_object_keys(properties) AS key FROM events;")
                 for row in cur.fetchall():
                     keys.add(row[0])
     except Exception:
@@ -314,12 +314,12 @@ def get_analytics_overview(
                     uniq(user_id) AS unique_visitors,
                     COUNT(*) AS total_events,
                     avgIf(duration_sec, duration_sec > 0) AS avg_duration
-                FROM generic_events
+                FROM events
                 {where_clause}
             """
             q_pages = f"""
                 SELECT pathname, COUNT(*) AS views, uniq(user_id) AS unique_visitors
-                FROM generic_events
+                FROM events
                 {where_clause}
                 GROUP BY pathname
                 ORDER BY views DESC
@@ -327,7 +327,7 @@ def get_analytics_overview(
             """
             q_referrers = f"""
                 SELECT referrer, COUNT(*) AS views
-                FROM generic_events
+                FROM events
                 {where_clause}
                 GROUP BY referrer
                 ORDER BY views DESC
@@ -335,7 +335,7 @@ def get_analytics_overview(
             """
             q_devices = f"""
                 SELECT device, COUNT(*) AS views
-                FROM generic_events
+                FROM events
                 {where_clause}
                 GROUP BY device
                 ORDER BY views DESC
@@ -347,12 +347,12 @@ def get_analytics_overview(
                     COUNT(DISTINCT user_id) AS unique_visitors,
                     COUNT(*) AS total_events,
                     AVG(CASE WHEN duration_sec > 0 THEN duration_sec END) AS avg_duration
-                FROM generic_events
+                FROM events
                 {where_clause}
             """
             q_pages = f"""
                 SELECT pathname, COUNT(*) AS views, COUNT(DISTINCT user_id) AS unique_visitors
-                FROM generic_events
+                FROM events
                 {where_clause}
                 GROUP BY pathname
                 ORDER BY views DESC
@@ -360,7 +360,7 @@ def get_analytics_overview(
             """
             q_referrers = f"""
                 SELECT referrer, COUNT(*) AS views
-                FROM generic_events
+                FROM events
                 {where_clause}
                 GROUP BY referrer
                 ORDER BY views DESC
@@ -368,7 +368,7 @@ def get_analytics_overview(
             """
             q_devices = f"""
                 SELECT device, COUNT(*) AS views
-                FROM generic_events
+                FROM events
                 {where_clause}
                 GROUP BY device
                 ORDER BY views DESC
