@@ -10,7 +10,7 @@ This repository contains benchmark results comparing **PostgreSQL 18** and **Cli
 docker-compose up -d
 uv sync
 uv run python generate-data.py
-uv run uvicorn api:app --reload
+uv run uvicorn main:app --reload
 ```
 
 Open **`http://127.0.0.1:8000/`** in your browser to view the web dashboard.

@@ -1,52 +1,18 @@
 import time
 import subprocess
 import os
-import hashlib
-import secrets
-from datetime import datetime, timedelta
-from typing import Union
-from pydantic import BaseModel
 import io
 import random
-from fastapi import FastAPI, HTTPException, Query, Response, Request
-from fastapi.responses import HTMLResponse
-from fastapi.middleware.cors import CORSMiddleware
-import psycopg
-import clickhouse_connect
-
-app = FastAPI(title="Database Benchmark API")
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+from datetime import datetime, timedelta
+from typing import Union
+from fastapi import APIRouter, HTTPException, Query, Request
+from config import (
+    CSV_FILE, CH_PASSWORD, CH_DB, generate_user_hash
 )
+from database import get_pg_connection, get_ch_client
+from models import EventPayload
 
-CSV_FILE = "user_events.csv"
-PG_DSN = "host=localhost dbname=benchmark_db user=postgres password=postgres_password"
-CH_HOST = "localhost"
-CH_PORT = 8123
-CH_USER = "default"
-CH_PASSWORD = "clickhouse_password"
-CH_DB = "default"
-
-SECRET_KEY_FILE = ".secret_key"
-try:
-    if os.path.exists(SECRET_KEY_FILE):
-        with open(SECRET_KEY_FILE, "r") as f:
-            SECRET_KEY = f.read().strip()
-    else:
-        SECRET_KEY = secrets.token_hex(32)
-        with open(SECRET_KEY_FILE, "w") as f:
-            f.write(SECRET_KEY)
-except Exception:
-    SECRET_KEY = os.environ.get("APP_SECRET_KEY", "fallback-static-benchmark-secret-key")
-
-def get_daily_salt() -> str:
-    today_str = datetime.now().strftime("%Y-%m-%d")
-    return hashlib.sha256(f"{SECRET_KEY}-{today_str}".encode("utf-8")).hexdigest()
+router = APIRouter()
 
 QUERIES = [
     {
@@ -91,18 +57,16 @@ QUERIES = [
     }
 ]
 
-
-@app.get("/api/queries")
+@router.get("/api/queries")
 def get_queries():
     return QUERIES
 
-@app.get("/api/status")
+@router.get("/api/status")
 def get_status():
     pg_count = 0
     ch_count = 0
-    
     try:
-        with psycopg.connect(PG_DSN) as conn:
+        with get_pg_connection() as conn:
             with conn.cursor() as cur:
                 cur.execute("""
                     SELECT EXISTS (
@@ -118,13 +82,7 @@ def get_status():
         pass
 
     try:
-        ch_client = clickhouse_connect.get_client(
-            host=CH_HOST,
-            port=CH_PORT,
-            username=CH_USER,
-            password=CH_PASSWORD,
-            database=CH_DB
-        )
+        ch_client = get_ch_client()
         exists = ch_client.command("EXISTS TABLE user_events;")
         if exists:
             ch_count = ch_client.command("SELECT COUNT(*) FROM user_events;")
@@ -138,13 +96,13 @@ def get_status():
         "is_ready": pg_count > 0 and ch_count > 0
     }
 
-@app.post("/api/import")
+@router.post("/api/import")
 def run_import():
     if not os.path.exists(CSV_FILE):
         raise HTTPException(status_code=400, detail="CSV file not found. Please run generate-data.py first.")
         
     try:
-        with psycopg.connect(PG_DSN) as conn:
+        with get_pg_connection() as conn:
             with conn.cursor() as cur:
                 cur.execute("DROP TABLE IF EXISTS user_events;")
                 cur.execute("""
@@ -169,13 +127,7 @@ def run_import():
         raise HTTPException(status_code=500, detail=f"Failed to reset Postgres schema: {str(e)}")
 
     try:
-        ch_client = clickhouse_connect.get_client(
-            host=CH_HOST,
-            port=CH_PORT,
-            username=CH_USER,
-            password=CH_PASSWORD,
-            database=CH_DB
-        )
+        ch_client = get_ch_client()
         ch_client.command("DROP TABLE IF EXISTS user_events;")
         ch_client.command("""
             CREATE TABLE user_events (
@@ -200,7 +152,7 @@ def run_import():
 
     start_pg = time.perf_counter()
     try:
-        with psycopg.connect(PG_DSN) as conn:
+        with get_pg_connection() as conn:
             with conn.cursor() as cur:
                 with open(CSV_FILE, "r") as f:
                     with cur.copy("COPY user_events (event_id, user_id, target_id, category_id, event_type, duration_sec, is_liked, event_time, device, commission) FROM STDIN WITH (FORMAT CSV, HEADER true)") as copy:
@@ -233,28 +185,13 @@ def run_import():
         "import_speedup": round(elapsed_pg / elapsed_ch, 2) if elapsed_ch > 0 else 0
     }
 
-class EventPayload(BaseModel):
-    target_id: int | None = 0
-    category_id: int | None = 0
-    event_type: str
-    duration_sec: int | None = 0
-    is_liked: int | None = 0
-    device: str | None = "desktop"
-    pathname: str = ""
-    referrer: str = ""
-    commission: float | None = 0.0
-
-@app.post("/api/events")
+@router.post("/api/events")
 def create_events(payload: Union[EventPayload, list[EventPayload]], request: Request):
     events = [payload] if isinstance(payload, EventPayload) else payload
     
     client_ip = request.client.host if request.client else "127.0.0.1"
     user_agent = request.headers.get("user-agent", "")
-    
-    salt = get_daily_salt()
-    session_str = f"{client_ip}-{user_agent}-{salt}"
-    sha_hex = hashlib.sha256(session_str.encode("utf-8")).hexdigest()
-    session_hash = int(sha_hex[:8], 16) % 100000 + 1
+    session_hash = generate_user_hash(client_ip, user_agent)
     
     prepared_rows = []
     for ev in events:
@@ -270,7 +207,7 @@ def create_events(payload: Union[EventPayload, list[EventPayload]], request: Req
         
     start_pg = time.perf_counter()
     try:
-        with psycopg.connect(PG_DSN) as conn:
+        with get_pg_connection() as conn:
             with conn.cursor() as cur:
                 cur.executemany(
                     """
@@ -286,13 +223,7 @@ def create_events(payload: Union[EventPayload, list[EventPayload]], request: Req
     
     start_ch = time.perf_counter()
     try:
-        ch_client = clickhouse_connect.get_client(
-            host=CH_HOST,
-            port=CH_PORT,
-            username=CH_USER,
-            password=CH_PASSWORD,
-            database=CH_DB
-        )
+        ch_client = get_ch_client()
         ch_client.insert(
             "user_events",
             data=prepared_rows,
@@ -313,7 +244,7 @@ def create_events(payload: Union[EventPayload, list[EventPayload]], request: Req
         }
     }
 
-@app.post("/api/events/random")
+@router.post("/api/events/random")
 def add_event_random():
     event_id = random.randint(1000000000, 9999999999)
     user_id = random.randint(1, 100000)
@@ -334,7 +265,7 @@ def add_event_random():
 
     start_pg = time.perf_counter()
     try:
-        with psycopg.connect(PG_DSN) as conn:
+        with get_pg_connection() as conn:
             with conn.cursor() as cur:
                 cur.execute(
                     """
@@ -350,13 +281,7 @@ def add_event_random():
 
     start_ch = time.perf_counter()
     try:
-        ch_client = clickhouse_connect.get_client(
-            host=CH_HOST,
-            port=CH_PORT,
-            username=CH_USER,
-            password=CH_PASSWORD,
-            database=CH_DB
-        )
+        ch_client = get_ch_client()
         ch_client.insert(
             "user_events",
             data=[[event_id, user_id, target_id, category_id, event_type, duration_sec, is_liked, event_time, device, commission]],
@@ -377,11 +302,11 @@ def add_event_random():
         }
     }
 
-@app.get("/api/events/lookup")
+@router.get("/api/events/lookup")
 def lookup_event(event_id: int = Query(...)):
     start_pg = time.perf_counter()
     try:
-        with psycopg.connect(PG_DSN) as conn:
+        with get_pg_connection() as conn:
             with conn.cursor() as cur:
                 cur.execute("SELECT * FROM user_events WHERE event_id = %s;", (event_id,))
                 row_pg = cur.fetchone()
@@ -391,13 +316,7 @@ def lookup_event(event_id: int = Query(...)):
 
     start_ch = time.perf_counter()
     try:
-        ch_client = clickhouse_connect.get_client(
-            host=CH_HOST,
-            port=CH_PORT,
-            username=CH_USER,
-            password=CH_PASSWORD,
-            database=CH_DB
-        )
+        ch_client = get_ch_client()
         ch_client.query("SELECT * FROM user_events WHERE event_id = %(event_id)s", {"event_id": event_id})
         ch_client.close()
     except Exception as e:
@@ -414,13 +333,13 @@ def lookup_event(event_id: int = Query(...)):
         }
     }
 
-@app.put("/api/events/update")
+@router.put("/api/events/update")
 def update_event(event_id: int = Query(...)):
     new_duration = random.randint(2, 600)
     
     start_pg = time.perf_counter()
     try:
-        with psycopg.connect(PG_DSN) as conn:
+        with get_pg_connection() as conn:
             with conn.cursor() as cur:
                 cur.execute("UPDATE user_events SET duration_sec = %s WHERE event_id = %s;", (new_duration, event_id))
                 conn.commit()
@@ -430,13 +349,7 @@ def update_event(event_id: int = Query(...)):
 
     start_ch = time.perf_counter()
     try:
-        ch_client = clickhouse_connect.get_client(
-            host=CH_HOST,
-            port=CH_PORT,
-            username=CH_USER,
-            password=CH_PASSWORD,
-            database=CH_DB
-        )
+        ch_client = get_ch_client()
         ch_client.command(
             "ALTER TABLE user_events UPDATE duration_sec = %(duration)s WHERE event_id = %(event_id)s",
             {"duration": new_duration, "event_id": event_id},
@@ -457,11 +370,11 @@ def update_event(event_id: int = Query(...)):
         }
     }
 
-@app.delete("/api/events/delete")
+@router.delete("/api/events/delete")
 def delete_event(event_id: int = Query(...)):
     start_pg = time.perf_counter()
     try:
-        with psycopg.connect(PG_DSN) as conn:
+        with get_pg_connection() as conn:
             with conn.cursor() as cur:
                 cur.execute("DELETE FROM user_events WHERE event_id = %s;", (event_id,))
                 conn.commit()
@@ -471,13 +384,7 @@ def delete_event(event_id: int = Query(...)):
 
     start_ch = time.perf_counter()
     try:
-        ch_client = clickhouse_connect.get_client(
-            host=CH_HOST,
-            port=CH_PORT,
-            username=CH_USER,
-            password=CH_PASSWORD,
-            database=CH_DB
-        )
+        ch_client = get_ch_client()
         ch_client.command(
             "ALTER TABLE user_events DELETE WHERE event_id = %(event_id)s",
             {"event_id": event_id},
@@ -497,7 +404,7 @@ def delete_event(event_id: int = Query(...)):
         }
     }
 
-@app.post("/api/events/batch")
+@router.post("/api/events/batch")
 def add_events_batch(count: int = Query(10000)):
     start_id = random.randint(100000000, 900000000)
     start_date = datetime(2026, 1, 1)
@@ -535,7 +442,7 @@ def add_events_batch(count: int = Query(10000)):
             csv_buffer.write(f"{r[0]},{r[1]},{r[2]},{r[3]},{r[4]},{r[5]},{r[6]},{dt_str},{r[8]},{r[9]}\n")
         csv_buffer.seek(0)
         
-        with psycopg.connect(PG_DSN) as conn:
+        with get_pg_connection() as conn:
             with conn.cursor() as cur:
                 with cur.copy("COPY user_events (event_id, user_id, target_id, category_id, event_type, duration_sec, is_liked, event_time, device, commission) FROM STDIN WITH (FORMAT CSV)") as copy:
                     copy.write(csv_buffer.read())
@@ -546,13 +453,7 @@ def add_events_batch(count: int = Query(10000)):
     
     start_ch = time.perf_counter()
     try:
-        ch_client = clickhouse_connect.get_client(
-            host=CH_HOST,
-            port=CH_PORT,
-            username=CH_USER,
-            password=CH_PASSWORD,
-            database=CH_DB
-        )
+        ch_client = get_ch_client()
         ch_client.insert(
             "user_events",
             data=rows,
@@ -573,128 +474,16 @@ def add_events_batch(count: int = Query(10000)):
         }
     }
 
-@app.get("/api/commission")
-def calculate_commission(
-    device: str = Query(None),
-    event_type: str = Query(None),
-    start_date: str = Query(None),
-    end_date: str = Query(None),
-    user_id: int = Query(None)
-):
-    where_parts = []
-    params = []
-    
-    if device:
-        where_parts.append("device = %s")
-        params.append(device)
-    if event_type:
-        where_parts.append("event_type = %s")
-        params.append(event_type)
-    if start_date:
-        where_parts.append("event_time >= %s")
-        params.append(start_date)
-    if end_date:
-        where_parts.append("event_time <= %s")
-        params.append(end_date)
-    if user_id:
-        where_parts.append("user_id = %s")
-        params.append(user_id)
-        
-    where_clause = ""
-    if where_parts:
-        where_clause = "WHERE " + " AND ".join(where_parts)
 
-    sql_pg = f"SELECT SUM(commission), AVG(commission), COUNT(*) FROM user_events {where_clause};"
-
-    start_pg = time.perf_counter()
-    try:
-        with psycopg.connect(PG_DSN) as conn:
-            with conn.cursor() as cur:
-                cur.execute(sql_pg, params)
-                row_pg = cur.fetchone()
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Postgres execution failed: {str(e)}")
-    elapsed_pg = (time.perf_counter() - start_pg) * 1000
-
-    ch_where_parts = []
-    ch_params = {}
-    
-    if device:
-        ch_where_parts.append("device = %(device)s")
-        ch_params["device"] = device
-    if event_type:
-        ch_where_parts.append("event_type = %(event_type)s")
-        ch_params["event_type"] = event_type
-    if start_date:
-        ch_where_parts.append("event_time >= %(start_date)s")
-        ch_params["start_date"] = start_date
-    if end_date:
-        ch_where_parts.append("event_time <= %(end_date)s")
-        ch_params["end_date"] = end_date
-    if user_id:
-        ch_where_parts.append("user_id = %(user_id)s")
-        ch_params["user_id"] = user_id
-        
-    ch_where_clause = ""
-    if ch_where_parts:
-        ch_where_clause = "WHERE " + " AND ".join(ch_where_parts)
-
-    sql_ch = f"SELECT SUM(commission), AVG(commission), COUNT(*) FROM user_events {ch_where_clause};"
-
-    start_ch = time.perf_counter()
-    try:
-        ch_client = clickhouse_connect.get_client(
-            host=CH_HOST,
-            port=CH_PORT,
-            username=CH_USER,
-            password=CH_PASSWORD,
-            database=CH_DB
-        )
-        ch_client.query(sql_ch, ch_params)
-        ch_client.close()
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"ClickHouse execution failed: {str(e)}")
-    elapsed_ch = (time.perf_counter() - start_ch) * 1000
-
-    total_comm = float(row_pg[0]) if row_pg and row_pg[0] is not None else 0.0
-    avg_comm = float(row_pg[1]) if row_pg and row_pg[1] is not None else 0.0
-    count = int(row_pg[2]) if row_pg and row_pg[2] is not None else 0
-
-    return {
-        "filters": {
-            "device": device,
-            "event_type": event_type,
-            "start_date": start_date,
-            "end_date": end_date,
-            "user_id": user_id
-        },
-        "results": {
-            "total_commission": round(total_comm, 2),
-            "average_commission": round(avg_comm, 4),
-            "matching_events_count": count
-        },
-        "timings_ms": {
-            "postgres": round(elapsed_pg, 2),
-            "clickhouse": round(elapsed_ch, 2),
-            "speedup": round(elapsed_pg / elapsed_ch, 2) if elapsed_ch > 0 else 0
-        }
-    }
-
-@app.get("/api/benchmark")
+@router.get("/api/benchmark")
 def run_benchmark():
     try:
-        pg_conn = psycopg.connect(PG_DSN)
+        pg_conn = get_pg_connection()
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to connect to Postgres: {str(e)}")
 
     try:
-        ch_client = clickhouse_connect.get_client(
-            host=CH_HOST,
-            port=CH_PORT,
-            username=CH_USER,
-            password=CH_PASSWORD,
-            database=CH_DB
-        )
+        ch_client = get_ch_client()
     except Exception as e:
         pg_conn.close()
         raise HTTPException(status_code=500, detail=f"Failed to connect to ClickHouse: {str(e)}")
@@ -764,18 +553,3 @@ def run_benchmark():
     return {
         "benchmark_results": results
     }
-
-@app.get("/", response_class=HTMLResponse)
-def get_dashboard():
-    with open("index.html", "r") as f:
-        return HTMLResponse(content=f.read())
-
-@app.get("/tracker.js")
-def get_tracker():
-    with open("tracker.js", "r") as f:
-        return Response(content=f.read(), media_type="application/javascript")
-
-@app.get("/demo", response_class=HTMLResponse)
-def get_tracker_demo():
-    with open("tracker_demo.html", "r") as f:
-        return HTMLResponse(content=f.read())

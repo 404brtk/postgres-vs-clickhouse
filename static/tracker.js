@@ -10,6 +10,13 @@
     const apiEndpoint = currentScript
         ? currentScript.getAttribute("data-endpoint") || ""
         : "";
+    let endpointPath = currentScript
+        ? currentScript.getAttribute("data-endpoint-path") || "/api/events"
+        : "/api/events";
+
+    window.setTrackerEndpointPath = function (path) {
+        endpointPath = path;
+    };
 
     let entryTime = performance.now();
 
@@ -30,7 +37,7 @@
 
     async function send(event) {
         try {
-            const response = await fetch(`${apiEndpoint}/api/events`, {
+            const response = await fetch(`${apiEndpoint}${endpointPath}`, {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
@@ -71,6 +78,23 @@
                 Math.round((Math.random() * 4.5 + 0.5) * 100) / 100;
         }
 
+        const standardKeys = [
+            "target_id",
+            "category_id",
+            "event_type",
+            "duration_sec",
+            "is_liked",
+            "device",
+            "pathname",
+            "referrer",
+            "commission",
+        ];
+        for (const [key, value] of Object.entries(properties)) {
+            if (!standardKeys.includes(key)) {
+                event[key] = value;
+            }
+        }
+
         return event;
     }
 
@@ -93,7 +117,7 @@
         const blob = new Blob([JSON.stringify(event)], {
             type: "application/json",
         });
-        navigator.sendBeacon(`${apiEndpoint}/api/events`, blob);
+        navigator.sendBeacon(`${apiEndpoint}${endpointPath}`, blob);
         window.dispatchEvent(
             new CustomEvent("tracker:track", {
                 detail: { event },
@@ -112,19 +136,23 @@
         if (!target) return;
 
         const eventType = target.getAttribute("data-event");
-        const targetId = target.getAttribute("data-target") || 0;
-        const categoryId = target.getAttribute("data-category") || 0;
-        const isLiked = target.getAttribute("data-liked") === "true";
-        const duration = target.getAttribute("data-duration") || 0;
-        const commission = target.getAttribute("data-commission") || 0.0;
+        const props = {};
+        for (const attr of target.attributes) {
+            if (attr.name.startsWith("data-")) {
+                const key = attr.name.substring(5);
+                if (key === "event") continue;
 
-        track(eventType, {
-            target_id: targetId,
-            category_id: categoryId,
-            is_liked: isLiked,
-            duration_sec: duration,
-            commission: commission,
-        });
+                if (key === "target") props["target_id"] = attr.value;
+                else if (key === "category") props["category_id"] = attr.value;
+                else if (key === "liked")
+                    props["is_liked"] = attr.value === "true";
+                else if (key === "duration") props["duration_sec"] = attr.value;
+                else if (key === "commission") props["commission"] = attr.value;
+                else props[key.replace(/-/g, "_")] = attr.value;
+            }
+        }
+
+        track(eventType, props);
     });
 
     document.addEventListener("pagehide", sendExit);

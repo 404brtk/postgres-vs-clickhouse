@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Tracker Demo</title>
+        <script
+            id="tracker-script"
+            src="/static/tracker.js"
+            data-site-id="demo-site"
+            defer
+        ></script>
+        <link rel="stylesheet" href="/static/style.css" />
+        <script src="/static/console.js"></script>
+    </head>
+    <body>
+        <div class="container">
+            <header>
+                <h1>Event Tracker</h1>
+                <div>
+                    <a
+                        href="/demo/analytics"
+                        class="nav-link"
+                        style="margin-top: 0; margin-right: 15px"
+                        >Analytics Console</a
+                    >
+                    <a href="/" class="nav-link" style="margin-top: 0"
+                        >Back to Dashboard</a
+                    >
+                </div>
+            </header>
+
+            <div
+                style="
+                    margin-bottom: 15px;
+                    display: flex;
+                    align-items: center;
+                    gap: 10px;
+                "
+            >
+                <span style="font-size: 12px; color: var(--text-secondary)"
+                    >Target Table:</span
+                >
+                <select
+                    id="tracker-target-db"
+                    onchange="changeTrackerTarget(this.value)"
+                    style="
+                        width: 250px;
+                        background-color: var(--card-bg);
+                        color: var(--text-primary);
+                        border: 1px solid var(--border-color);
+                        padding: 4px;
+                        border-radius: 4px;
+                    "
+                >
+                    <option value="/api/events">user_events (Benchmark)</option>
+                    <option value="/api/analytics/ingest">
+                        generic_events (Console Sandbox)
+                    </option>
+                </select>
+            </div>
+
+            <div class="actions">
+                <button data-event="view" data-target="19896" data-category="9">
+                    Simulate View
+                </button>
+                <button
+                    data-event="scroll"
+                    data-target="4682"
+                    data-category="18"
+                    data-scroll-depth="75"
+                >
+                    Simulate Scroll
+                </button>
+                <button
+                    data-event="click"
+                    data-target="33265"
+                    data-category="9"
+                    data-liked="true"
+                >
+                    Simulate Like
+                </button>
+                <button
+                    data-event="share"
+                    data-target="14399"
+                    data-category="13"
+                >
+                    Simulate Share
+                </button>
+            </div>
+
+            <div class="terminal" id="terminal" style="height: 350px">
+                <div style="color: #38bdf8">
+                    Console initialized. Click simulate buttons to generate
+                    activity.
+                </div>
+            </div>
+        </div>
+
+        <script>
+            function changeTrackerTarget(path) {
+                if (window.setTrackerEndpointPath) {
+                    window.setTrackerEndpointPath(path);
+                    log(
+                        `[SYSTEM] Ingestion target switched to: ${path === "/api/events" ? "user_events (Benchmark)" : "generic_events (Console Sandbox)"}`,
+                    );
+                }
+            }
+
+            window.addEventListener("tracker:track", (e) => {
+                const ev = e.detail.event;
+                const standardKeys = [
+                    "event_type",
+                    "target_id",
+                    "category_id",
+                    "duration_sec",
+                    "is_liked",
+                    "device",
+                    "pathname",
+                    "referrer",
+                    "commission",
+                ];
+                const customProps = [];
+                for (const [key, value] of Object.entries(ev)) {
+                    if (!standardKeys.includes(key)) {
+                        customProps.push(`${key}: ${value}`);
+                    }
+                }
+                const customStr = customProps.length
+                    ? `, properties: {${customProps.join(", ")}}`
+                    : "";
+                const duration = ev.duration_sec
+                    ? `, duration: ${ev.duration_sec}s`
+                    : "";
+                log(
+                    `[TRACK] Captured "${ev.event_type}" (target: ${ev.target_id}, category: ${ev.category_id}${duration}${customStr}, page: ${ev.pathname})`,
+                );
+            });
+
+            window.addEventListener("tracker:ingested", (e) => {
+                const ev = e.detail.event;
+                const data = e.detail.data;
+                const pg = data.timings_ms.postgres;
+                const ch = data.timings_ms.clickhouse;
+                const speedup = data.timings_ms.speedup;
+                const winner =
+                    speedup >= 1
+                        ? `ClickHouse (${speedup.toFixed(2)}x)`
+                        : `PostgreSQL (${(1 / speedup).toFixed(2)}x)`;
+
+                log(
+                    `[INGEST] Ingested "${ev.event_type}" | PG: ${pg.toFixed(1)}ms | CH: ${ch.toFixed(1)}ms | Winner: ${winner}`,
+                );
+            });
+        </script>
+    </body>
+</html>

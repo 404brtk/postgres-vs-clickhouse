@@ -4,293 +4,22 @@
         <meta charset="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         <title>Postgres vs ClickHouse Benchmark</title>
-        <link
-            href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap"
-            rel="stylesheet"
-        />
         <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-        <style>
-            :root {
-                --bg-color: #050b14;
-                --card-bg: #0d1527;
-                --border-color: #1e293b;
-                --text-primary: #f8fafc;
-                --text-secondary: #94a3b8;
-                --accent-blue: #0ea5e9;
-                --postgres-color: #0ea5e9;
-                --clickhouse-color: #f59e0b;
-                --success-color: #10b981;
-                --error-color: #ef4444;
-            }
-
-            * {
-                box-sizing: border-box;
-                margin: 0;
-                padding: 0;
-            }
-
-            body {
-                font-family: "Inter", sans-serif;
-                background-color: var(--bg-color);
-                color: var(--text-primary);
-                line-height: 1.5;
-                padding: 2rem;
-            }
-
-            .container {
-                max-width: 1200px;
-                margin: 0 auto;
-            }
-
-            header {
-                display: flex;
-                justify-content: space-between;
-                align-items: center;
-                margin-bottom: 2.5rem;
-            }
-
-            h1 {
-                font-size: 2rem;
-                font-weight: 600;
-                margin-bottom: 0.5rem;
-                color: var(--text-primary);
-            }
-
-            p.subtitle {
-                color: var(--text-secondary);
-                font-size: 1rem;
-            }
-
-            .grid {
-                display: grid;
-                grid-template-columns: 1fr 1fr;
-                gap: 1.5rem;
-                margin-bottom: 1.5rem;
-            }
-
-            @media (max-width: 768px) {
-                .grid {
-                    grid-template-columns: 1fr;
-                }
-            }
-
-            .card {
-                background-color: var(--card-bg);
-                border: 1px solid var(--border-color);
-                border-radius: 8px;
-                padding: 1.5rem;
-            }
-
-            .card h2 {
-                font-size: 1.15rem;
-                margin-bottom: 1.25rem;
-                font-weight: 600;
-                color: var(--text-primary);
-            }
-
-            .btn {
-                display: inline-block;
-                width: 100%;
-                background-color: var(--accent-blue);
-                color: var(--text-primary);
-                font-weight: 500;
-                border: none;
-                padding: 0.65rem 1.25rem;
-                border-radius: 4px;
-                cursor: pointer;
-                transition:
-                    background-color 0.15s ease,
-                    transform 0.1s ease;
-                text-align: center;
-                font-size: 0.95rem;
-            }
-
-            .btn:hover {
-                background-color: #0284c7;
-            }
-
-            .btn:active {
-                transform: scale(0.99);
-            }
-
-            .btn-secondary {
-                background-color: #1e293b;
-                border: 1px solid var(--border-color);
-                color: var(--text-primary);
-            }
-
-            .btn-secondary:hover {
-                background-color: #334155;
-            }
-
-            .form-group {
-                margin-bottom: 1rem;
-            }
-
-            .form-group label {
-                display: block;
-                margin-bottom: 0.5rem;
-                font-size: 0.875rem;
-                color: var(--text-secondary);
-            }
-
-            .form-control {
-                width: 100%;
-                background-color: var(--bg-color);
-                border: 1px solid var(--border-color);
-                border-radius: 6px;
-                padding: 0.6rem 0.8rem;
-                color: var(--text-primary);
-                font-family: inherit;
-                font-size: 0.95rem;
-            }
-
-            .form-control:focus {
-                outline: none;
-                border-color: var(--accent-blue);
-            }
-
-            .flex-row {
-                display: flex;
-                gap: 1rem;
-            }
-
-            .result-box {
-                margin-top: 1.5rem;
-                background-color: var(--bg-color);
-                border: 1px solid var(--border-color);
-                border-radius: 6px;
-                padding: 1rem;
-                font-size: 0.9rem;
-            }
-
-            .result-item {
-                display: flex;
-                justify-content: space-between;
-                margin-bottom: 0.5rem;
-            }
-
-            .result-item:last-child {
-                margin-bottom: 0;
-                border-top: 1px dashed var(--border-color);
-                padding-top: 0.5rem;
-                margin-top: 0.5rem;
-            }
-
-            .timing-bar-container {
-                margin-top: 1rem;
-            }
-
-            .timing-bar-title {
-                font-size: 0.8rem;
-                color: var(--text-secondary);
-                margin-bottom: 0.25rem;
-            }
-
-            .timing-bar {
-                height: 10px;
-                border-radius: 5px;
-                background-color: var(--border-color);
-                overflow: hidden;
-                display: flex;
-            }
-
-            .timing-pg {
-                background-color: var(--postgres-color);
-                height: 100%;
-            }
-
-            .timing-ch {
-                background-color: var(--clickhouse-color);
-                height: 100%;
-            }
-
-            .speedup-badge {
-                background-color: rgba(16, 185, 129, 0.15);
-                color: var(--success-color);
-                padding: 0.1rem 0.5rem;
-                border-radius: 4px;
-                font-weight: 600;
-            }
-
-            .terminal {
-                background-color: #020617;
-                border: 1px solid var(--border-color);
-                border-radius: 6px;
-                padding: 1rem;
-                font-family: monospace;
-                font-size: 0.85rem;
-                color: #38bdf8;
-                max-height: 200px;
-                overflow-y: auto;
-                margin-bottom: 2rem;
-            }
-
-            table {
-                width: 100%;
-                border-collapse: collapse;
-                margin-top: 1.5rem;
-                font-size: 0.9rem;
-            }
-
-            th,
-            td {
-                text-align: left;
-                padding: 0.75rem;
-                border-bottom: 1px solid var(--border-color);
-            }
-
-            th {
-                color: var(--text-secondary);
-                font-weight: 600;
-            }
-
-            .chart-container {
-                position: relative;
-                height: 350px;
-                width: 100%;
-                margin-top: 1.5rem;
-            }
-
-            .loading-spinner {
-                display: inline-block;
-                width: 20px;
-                height: 20px;
-                border: 3px solid rgba(255, 255, 255, 0.3);
-                border-radius: 50%;
-                border-top-color: #fff;
-                animation: spin 1s ease-in-out infinite;
-                margin-right: 0.5rem;
-                vertical-align: middle;
-            }
-
-            @keyframes spin {
-                to {
-                    transform: rotate(360deg);
-                }
-            }
-
-            .nav-link {
-                color: var(--text-secondary);
-                text-decoration: none;
-                font-size: 0.95rem;
-                transition: color 0.2s;
-            }
-
-            .nav-link:hover {
-                color: var(--text-primary);
-            }
-
-            .hidden {
-                display: none;
-            }
-        </style>
+        <link rel="stylesheet" href="/static/style.css" />
+        <script src="/static/console.js"></script>
     </head>
     <body>
         <div class="container">
             <header>
                 <h1>Postgres vs ClickHouse</h1>
-                <a href="/demo" class="nav-link">Live Tracker Demo</a>
+                <div>
+                    <a href="/demo" class="nav-link" style="margin-right: 15px"
+                        >Tracker Demo</a
+                    >
+                    <a href="/demo/analytics" class="nav-link"
+                        >Analytics Console</a
+                    >
+                </div>
             </header>
 
             <div class="grid">
@@ -767,14 +496,6 @@
         <script>
             let myChart = null;
 
-            function log(msg, isError = false) {
-                const term = document.getElementById("terminal");
-                const time = new Date().toLocaleTimeString();
-                const color = isError ? "var(--error-color)" : "#38bdf8";
-                term.innerHTML += `<div style="color: ${color}">[${time}] ${msg}</div>`;
-                term.scrollTop = term.scrollHeight;
-            }
-
             async function checkStatus() {
                 try {
                     const response = await fetch("/api/status");
@@ -1065,27 +786,65 @@
                 const isRandomUser =
                     document.getElementById("filter-random-user").checked;
 
-                let queryParams = [];
                 let userId = null;
+                const filters = [];
 
                 if (isRandomUser) {
                     userId = Math.floor(Math.random() * 100000) + 1;
-                    queryParams.push(`user_id=${userId}`);
+                    filters.push({
+                        field: "user_id",
+                        operator: "eq",
+                        value: parseInt(userId, 10),
+                    });
                     log(`Randomly selected User ID: ${userId}`);
                 }
 
-                if (device) queryParams.push(`device=${device}`);
-                if (event) queryParams.push(`event_type=${event}`);
-                if (start) queryParams.push(`start_date=${start}`);
-                if (end) queryParams.push(`end_date=${end}`);
+                if (device)
+                    filters.push({
+                        field: "device",
+                        operator: "eq",
+                        value: device,
+                    });
+                if (event)
+                    filters.push({
+                        field: "event_type",
+                        operator: "eq",
+                        value: event,
+                    });
 
-                const url =
-                    "/api/commission" +
-                    (queryParams.length ? "?" + queryParams.join("&") : "");
+                const payload = {
+                    target_table: "user_events",
+                    metrics: [
+                        {
+                            type: "sum",
+                            field: "commission",
+                            alias: "total_commission",
+                        },
+                        {
+                            type: "avg",
+                            field: "commission",
+                            alias: "average_commission",
+                        },
+                        {
+                            type: "count",
+                            field: "event_id",
+                            alias: "matching_events_count",
+                        },
+                    ],
+                    filters: filters,
+                };
+
+                if (start) payload.start_date = new Date(start).toISOString();
+                if (end) payload.end_date = new Date(end).toISOString();
+
                 log(`Calculating commissions with filters...`);
 
                 try {
-                    const response = await fetch(url);
+                    const response = await fetch("/api/analytics/compare", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify(payload),
+                    });
                     const data = await response.json();
 
                     if (!response.ok)
@@ -1095,15 +854,31 @@
                         `Calculation complete. Postgres: ${data.timings_ms.postgres}ms, ClickHouse: ${data.timings_ms.clickhouse}ms.`,
                     );
 
+                    const resultsRow = data.results[0] || {
+                        total_commission: 0,
+                        average_commission: 0,
+                        matching_events_count: 0,
+                    };
+                    const totalComm = parseFloat(
+                        resultsRow.total_commission || 0,
+                    );
+                    const avgComm = parseFloat(
+                        resultsRow.average_commission || 0,
+                    );
+                    const countComm = parseInt(
+                        resultsRow.matching_events_count || 0,
+                        10,
+                    );
+
                     document
                         .getElementById("calc-results")
                         .classList.remove("hidden");
                     document.getElementById("calc-total").innerText =
-                        `$${data.results.total_commission.toLocaleString()}`;
+                        `$${totalComm.toLocaleString()}`;
                     document.getElementById("calc-avg").innerText =
-                        `$${data.results.average_commission.toFixed(4)}`;
+                        `$${avgComm.toFixed(4)}`;
                     document.getElementById("calc-count").innerText =
-                        data.results.matching_events_count.toLocaleString();
+                        countComm.toLocaleString();
                     document.getElementById("calc-selected-user").innerText =
                         isRandomUser ? `User ID: ${userId}` : "All Users";
                     document.getElementById("calc-time-pg").innerText =
@@ -1253,6 +1028,10 @@
                 if (myChart) {
                     myChart.destroy();
                 }
+
+                Chart.defaults.font.family =
+                    "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace";
+                Chart.defaults.color = "#94a3b8";
 
                 const ctx = document
                     .getElementById("benchmarkChart")
