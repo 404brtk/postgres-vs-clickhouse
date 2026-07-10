@@ -2,34 +2,12 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-import psycopg
 import clickhouse_connect
-from config import PG_DSN, CH_HOST, CH_PORT, CH_USER, CH_PASSWORD, CH_DB
+from config import CH_HOST, CH_PORT, CH_USER, CH_PASSWORD, CH_DB
 from routers import pages, analytics
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    try:
-        with psycopg.connect(PG_DSN) as conn:
-            with conn.cursor() as cur:
-                cur.execute("""
-                    CREATE TABLE IF NOT EXISTS events (
-                        event_id BIGINT PRIMARY KEY,
-                        user_id INT,
-                        event_type VARCHAR(100),
-                        event_time TIMESTAMP,
-                        device VARCHAR(50),
-                        pathname VARCHAR(500),
-                        referrer VARCHAR(500),
-                        duration_sec INT DEFAULT 0,
-                        properties JSONB
-                    );
-                    CREATE INDEX IF NOT EXISTS idx_events_type_time ON events (event_type, event_time);
-                """)
-                conn.commit()
-    except Exception:
-        pass
-
     try:
         ch_client = clickhouse_connect.get_client(
             host=CH_HOST,

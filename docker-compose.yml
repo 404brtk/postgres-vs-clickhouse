@@ -1,22 +1,4 @@
 services:
-    postgres:
-        image: postgres:18-alpine
-        container_name: benchmark-postgres
-        environment:
-            POSTGRES_USER: postgres
-            POSTGRES_PASSWORD: postgres_password
-            POSTGRES_DB: benchmark_db
-        ports:
-            - "5432:5432"
-        volumes:
-            - pgdata:/var/lib/postgresql
-        command: >
-            postgres
-            -c shared_buffers=1GB
-            -c work_mem=64MB
-            -c max_wal_size=4GB
-            -c synchronous_commit=off
-
     clickhouse:
         image: clickhouse/clickhouse-server:latest
         container_name: benchmark-clickhouse
@@ -31,5 +13,4 @@ services:
             - chdata:/var/lib/clickhouse
 
 volumes:
-    pgdata:
     chdata:

@@ -3,8 +3,6 @@ import hashlib
 import secrets
 from datetime import datetime
 
-CSV_FILE = "user_events.csv"
-PG_DSN = "host=localhost dbname=benchmark_db user=postgres password=postgres_password"
 CH_HOST = "localhost"
 CH_PORT = 8123
 CH_USER = "default"

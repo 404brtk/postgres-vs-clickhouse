@@ -24,15 +24,6 @@ class FilterSpec(BaseModel):
     value: Any
 
 class QuerySpec(BaseModel):
-    target_db: Literal["clickhouse", "postgres"] = "clickhouse"
-    start_date: datetime | None = None
-    end_date: datetime | None = None
-    metrics: list[MetricSpec]
-    group_by: list[str] | None = None
-    filters: list[FilterSpec] | None = None
-    limit: int | None = 100
-
-class CompareQuerySpec(BaseModel):
     start_date: datetime | None = None
     end_date: datetime | None = None
     metrics: list[MetricSpec]

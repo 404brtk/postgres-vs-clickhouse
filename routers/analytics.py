@@ -1,28 +1,24 @@
 import time
 import random
-import json
-import re
 from datetime import datetime
-from typing import Literal, Union
+from typing import Union
 from fastapi import APIRouter, HTTPException, Request
 from config import generate_user_hash
-from database import get_pg_connection, get_ch_client, execute_generic_sql
-from models import GenericEvent, QuerySpec, CompareQuerySpec
+from database import get_ch_client, execute_sql
+from models import GenericEvent, QuerySpec
 
 router = APIRouter()
 
-def resolve_field(field_name: str, db_type: str, for_numeric_aggregation: bool = False) -> str:
-    if re.match(r"^[a-zA-Z_][a-zA-Z0-9_]*$", field_name):
+def resolve_field(field_name: str, for_numeric_aggregation: bool = False) -> str:
+    standard_cols = {"event_id", "user_id", "event_type", "event_time", "device", "pathname", "referrer", "duration_sec"}
+    if field_name in standard_cols:
         return field_name
         
     if field_name.startswith("properties."):
         prop_key = field_name.split(".", 1)[1]
         clean_key = "".join(c for c in prop_key if c.isalnum() or c == "_")
-        if db_type == "clickhouse":
-            return f"toFloat64OrNull(properties['{clean_key}'])" if for_numeric_aggregation else f"properties['{clean_key}']"
-        elif db_type == "postgres":
-            return f"NULLIF(properties->>'{clean_key}', '')::numeric" if for_numeric_aggregation else f"properties->>'{clean_key}'"
-            
+        return f"toFloat64OrNull(properties['{clean_key}'])" if for_numeric_aggregation else f"properties['{clean_key}']"
+
     raise ValueError(f"Invalid field name: {field_name}")
 
 @router.post("/api/analytics/ingest")
@@ -52,30 +48,7 @@ def create_events(payload: Union[GenericEvent, list[GenericEvent]], request: Req
             ev.device or "desktop", ev.pathname, ev.referrer, ev.duration_sec or 0, properties
         ))
         
-    start_pg = time.perf_counter()
-    pg_success = False
-    try:
-        with get_pg_connection() as conn:
-            with conn.cursor() as cur:
-                pg_rows = [
-                    (r[0], r[1], r[2], r[3], r[4], r[5], r[6], r[7], json.dumps(r[8]))
-                    for r in prepared_rows
-                ]
-                cur.executemany(
-                    """
-                    INSERT INTO events (event_id, user_id, event_type, event_time, device, pathname, referrer, duration_sec, properties)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s);
-                    """,
-                    pg_rows
-                )
-                conn.commit()
-                pg_success = True
-    except Exception:
-        pass
-    elapsed_pg = (time.perf_counter() - start_pg) * 1000
-    
     start_ch = time.perf_counter()
-    ch_success = False
     try:
         ch_client = get_ch_client()
         ch_client.insert(
@@ -84,47 +57,30 @@ def create_events(payload: Union[GenericEvent, list[GenericEvent]], request: Req
             column_names=["event_id", "user_id", "event_type", "event_time", "device", "pathname", "referrer", "duration_sec", "properties"]
         )
         ch_client.close()
-        ch_success = True
-    except Exception:
-        pass
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to insert into ClickHouse: {str(e)}")
+        
     elapsed_ch = (time.perf_counter() - start_ch) * 1000
     
-    if not pg_success and not ch_success:
-        raise HTTPException(status_code=500, detail="Failed to insert into both databases")
-        
     return {
         "status": "success",
         "count": len(events),
         "timings_ms": {
-            "postgres": round(elapsed_pg, 2) if pg_success else None,
-            "clickhouse": round(elapsed_ch, 2) if ch_success else None
+            "clickhouse": round(elapsed_ch, 2)
         }
     }
 
 @router.post("/api/analytics/clear")
 def clear_analytics_data():
-    pg_success = False
-    try:
-        with get_pg_connection() as conn:
-            with conn.cursor() as cur:
-                cur.execute("TRUNCATE TABLE events;")
-                conn.commit()
-                pg_success = True
-    except Exception:
-        pass
-    ch_success = False
     try:
         ch_client = get_ch_client()
         ch_client.command("TRUNCATE TABLE events;")
         ch_client.close()
-        ch_success = True
-    except Exception:
-        pass
-    if not pg_success and not ch_success:
-        raise HTTPException(status_code=500, detail="Failed to clear databases")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to clear database: {str(e)}")
     return {"status": "success", "message": "All generic events cleared."}
 
-def compile_sql_query(spec: Union[QuerySpec, CompareQuerySpec], db: str) -> tuple[str, Union[dict, list]]:
+def compile_sql_query(spec: QuerySpec) -> tuple[str, dict]:
     if not spec.metrics and not spec.group_by:
         raise ValueError("At least one metric or group-by column must be specified.")
 
@@ -133,7 +89,7 @@ def compile_sql_query(spec: Union[QuerySpec, CompareQuerySpec], db: str) -> tupl
     
     if spec.group_by:
         for gb in spec.group_by:
-            resolved = resolve_field(gb, db)
+            resolved = resolve_field(gb)
             select_parts.append(f"{resolved} AS {gb.replace('.', '_')}")
             group_by_cols.append(resolved)
             
@@ -144,11 +100,11 @@ def compile_sql_query(spec: Union[QuerySpec, CompareQuerySpec], db: str) -> tupl
         is_numeric = m.type in ("sum", "avg")
         
         if m.field:
-            resolved = resolve_field(m.field, db, for_numeric_aggregation=is_numeric)
+            resolved = resolve_field(m.field, for_numeric_aggregation=is_numeric)
             if m.type == "count":
                 expr = f"COUNT({resolved})" if m.field != "*" else "COUNT(*)"
             elif m.type == "uniq":
-                expr = f"uniq({resolved})" if db == "clickhouse" else f"COUNT(DISTINCT {resolved})"
+                expr = f"uniq({resolved})"
             elif m.type in ("sum", "avg", "min", "max"):
                 expr = f"{m.type.upper()}({resolved})"
             else:
@@ -162,27 +118,19 @@ def compile_sql_query(spec: Union[QuerySpec, CompareQuerySpec], db: str) -> tupl
         select_parts.append(f"{expr} AS {clean_alias}")
         
     where_parts = []
-    params = {} if db == "clickhouse" else []
+    params = {}
     
     if spec.start_date:
-        if db == "clickhouse":
-            where_parts.append("event_time >= %(start_date)s")
-            params["start_date"] = spec.start_date
-        else:
-            where_parts.append("event_time >= %s")
-            params.append(spec.start_date)
+        where_parts.append("event_time >= %(start_date)s")
+        params["start_date"] = spec.start_date
             
     if spec.end_date:
-        if db == "clickhouse":
-            where_parts.append("event_time <= %(end_date)s")
-            params["end_date"] = spec.end_date
-        else:
-            where_parts.append("event_time <= %s")
-            params.append(spec.end_date)
+        where_parts.append("event_time <= %(end_date)s")
+        params["end_date"] = spec.end_date
             
     if spec.filters:
         for idx, f in enumerate(spec.filters):
-            resolved_field = resolve_field(f.field, db)
+            resolved_field = resolve_field(f.field)
             
             op_map = {
                 "eq": "=", "neq": "!=", "gt": ">", "gte": ">=", "lt": "<", "lte": "<=",
@@ -197,20 +145,11 @@ def compile_sql_query(spec: Union[QuerySpec, CompareQuerySpec], db: str) -> tupl
             if f.operator == "in":
                 if not isinstance(f.value, list):
                     raise ValueError("IN operator requires a list value")
-                if db == "clickhouse":
-                    where_parts.append(f"{resolved_field} {sql_op} %({param_key})s")
-                    params[param_key] = tuple(f.value)
-                else:
-                    placeholders = ", ".join(["%s"] * len(f.value))
-                    where_parts.append(f"{resolved_field} {sql_op} ({placeholders})")
-                    params.extend(f.value)
+                where_parts.append(f"{resolved_field} {sql_op} %({param_key})s")
+                params[param_key] = tuple(f.value)
             else:
-                if db == "clickhouse":
-                    where_parts.append(f"{resolved_field} {sql_op} %({param_key})s")
-                    params[param_key] = f.value
-                else:
-                    where_parts.append(f"{resolved_field} {sql_op} %s")
-                    params.append(f.value)
+                where_parts.append(f"{resolved_field} {sql_op} %({param_key})s")
+                params[param_key] = f.value
                     
     select_clause = ", ".join(select_parts)
     where_clause = f"WHERE {' AND '.join(where_parts)}" if where_parts else ""
@@ -223,40 +162,13 @@ def compile_sql_query(spec: Union[QuerySpec, CompareQuerySpec], db: str) -> tupl
 @router.post("/api/analytics/query")
 def query_analytics_events(spec: QuerySpec):
     try:
-        sql, params = compile_sql_query(spec, spec.target_db)
-        results = execute_generic_sql(spec.target_db, sql, params)
+        sql, params = compile_sql_query(spec)
+        results = execute_sql(sql, params)
         return results
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Query failed: {str(e)}")
-
-@router.post("/api/analytics/compare")
-def compare_analytics_events(spec: CompareQuerySpec):
-    try:
-        sql_pg, params_pg = compile_sql_query(spec, "postgres")
-        sql_ch, params_ch = compile_sql_query(spec, "clickhouse")
-        
-        start_pg = time.perf_counter()
-        _ = execute_generic_sql("postgres", sql_pg, params_pg)
-        elapsed_pg = (time.perf_counter() - start_pg) * 1000
-        
-        start_ch = time.perf_counter()
-        results_ch = execute_generic_sql("clickhouse", sql_ch, params_ch)
-        elapsed_ch = (time.perf_counter() - start_ch) * 1000
-        
-        return {
-            "results": results_ch,
-            "timings_ms": {
-                "postgres": round(elapsed_pg, 2),
-                "clickhouse": round(elapsed_ch, 2),
-                "speedup": round(elapsed_pg / elapsed_ch, 2) if elapsed_ch > 0 else 0
-            }
-        }
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Comparison failed: {str(e)}")
 
 @router.get("/api/analytics/properties")
 def get_available_properties():
@@ -269,117 +181,66 @@ def get_available_properties():
         ch_client.close()
     except Exception:
         pass
-    try:
-        with get_pg_connection() as conn:
-            with conn.cursor() as cur:
-                cur.execute("SELECT DISTINCT jsonb_object_keys(properties) AS key FROM events;")
-                for row in cur.fetchall():
-                    keys.add(row[0])
-    except Exception:
-        pass
     return sorted(list(keys))
 
 @router.get("/api/analytics/overview")
 def get_analytics_overview(
-    target_db: Literal["clickhouse", "postgres"] = "clickhouse",
     start_date: datetime | None = None,
     end_date: datetime | None = None
 ):
     try:
         where_parts = []
-        params_ch = {}
-        params_pg = []
+        params = {}
 
         if start_date:
-            where_parts.append("event_time >= %(start_date)s" if target_db == "clickhouse" else "event_time >= %s")
-            if target_db == "clickhouse":
-                params_ch["start_date"] = start_date
-            else:
-                params_pg.append(start_date)
+            where_parts.append("event_time >= %(start_date)s")
+            params["start_date"] = start_date
 
         if end_date:
-            where_parts.append("event_time <= %(end_date)s" if target_db == "clickhouse" else "event_time <= %s")
-            if target_db == "clickhouse":
-                params_ch["end_date"] = end_date
-            else:
-                params_pg.append(end_date)
+            where_parts.append("event_time <= %(end_date)s")
+            params["end_date"] = end_date
 
         where_clause = f"WHERE {' AND '.join(where_parts)}" if where_parts else ""
-        params = params_ch if target_db == "clickhouse" else params_pg
 
-        if target_db == "clickhouse":
-            q_summary = f"""
-                SELECT 
-                    countIf(event_type = 'pageview') AS total_views,
-                    uniq(user_id) AS unique_visitors,
-                    COUNT(*) AS total_events,
-                    avgIf(duration_sec, duration_sec > 0) AS avg_duration
-                FROM events
-                {where_clause}
-            """
-            q_pages = f"""
-                SELECT pathname, COUNT(*) AS views, uniq(user_id) AS unique_visitors
-                FROM events
-                {where_clause}
-                GROUP BY pathname
-                ORDER BY views DESC
-                LIMIT 10
-            """
-            q_referrers = f"""
-                SELECT referrer, COUNT(*) AS views
-                FROM events
-                {where_clause}
-                GROUP BY referrer
-                ORDER BY views DESC
-                LIMIT 10
-            """
-            q_devices = f"""
-                SELECT device, COUNT(*) AS views
-                FROM events
-                {where_clause}
-                GROUP BY device
-                ORDER BY views DESC
-            """
-        else:
-            q_summary = f"""
-                SELECT 
-                    COUNT(CASE WHEN event_type = 'pageview' THEN 1 END) AS total_views,
-                    COUNT(DISTINCT user_id) AS unique_visitors,
-                    COUNT(*) AS total_events,
-                    AVG(CASE WHEN duration_sec > 0 THEN duration_sec END) AS avg_duration
-                FROM events
-                {where_clause}
-            """
-            q_pages = f"""
-                SELECT pathname, COUNT(*) AS views, COUNT(DISTINCT user_id) AS unique_visitors
-                FROM events
-                {where_clause}
-                GROUP BY pathname
-                ORDER BY views DESC
-                LIMIT 10
-            """
-            q_referrers = f"""
-                SELECT referrer, COUNT(*) AS views
-                FROM events
-                {where_clause}
-                GROUP BY referrer
-                ORDER BY views DESC
-                LIMIT 10
-            """
-            q_devices = f"""
-                SELECT device, COUNT(*) AS views
-                FROM events
-                {where_clause}
-                GROUP BY device
-                ORDER BY views DESC
-            """
+        q_summary = f"""
+            SELECT 
+                countIf(event_type = 'pageview') AS total_views,
+                uniq(user_id) AS unique_visitors,
+                COUNT(*) AS total_events,
+                avgIf(duration_sec, duration_sec > 0) AS avg_duration
+            FROM events
+            {where_clause}
+        """
+        q_pages = f"""
+            SELECT pathname, COUNT(*) AS views, uniq(user_id) AS unique_visitors
+            FROM events
+            {where_clause}
+            GROUP BY pathname
+            ORDER BY views DESC
+            LIMIT 10
+        """
+        q_referrers = f"""
+            SELECT referrer, COUNT(*) AS views
+            FROM events
+            {where_clause}
+            GROUP BY referrer
+            ORDER BY views DESC
+            LIMIT 10
+        """
+        q_devices = f"""
+            SELECT device, COUNT(*) AS views
+            FROM events
+            {where_clause}
+            GROUP BY device
+            ORDER BY views DESC
+        """
 
-        summary_rows = execute_generic_sql(target_db, q_summary, params)
+        summary_rows = execute_sql(q_summary, params)
         summary = summary_rows[0] if summary_rows else {"total_views": 0, "unique_visitors": 0, "total_events": 0}
 
-        top_pages = execute_generic_sql(target_db, q_pages, params)
-        top_referrers = execute_generic_sql(target_db, q_referrers, params)
-        devices = execute_generic_sql(target_db, q_devices, params)
+        top_pages = execute_sql(q_pages, params)
+        top_referrers = execute_sql(q_referrers, params)
+        devices = execute_sql(q_devices, params)
 
         return {
             "summary": summary,

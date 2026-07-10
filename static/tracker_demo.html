@@ -18,9 +18,9 @@
         <div class="container">
             <header>
                 <h1>Event Tracker</h1>
-                    <a href="/" class="nav-link" style="margin-top: 0"
-                        >Analytics Console</a
-                    >
+                <a href="/" class="nav-link" style="margin-top: 0"
+                    >Analytics Console</a
+                >
             </header>
 
             <div class="actions">
@@ -94,27 +94,10 @@
             window.addEventListener("tracker:ingested", (e) => {
                 const ev = e.detail.event;
                 const data = e.detail.data;
-                const pg = data.timings_ms.postgres;
                 const ch = data.timings_ms.clickhouse;
-                
-                let winner = "N/A";
-                if (pg != null && ch != null && ch > 0) {
-                    const speedup = pg / ch;
-                    winner = speedup >= 1
-                        ? `ClickHouse (${speedup.toFixed(2)}x)`
-                        : `PostgreSQL (${(1 / speedup).toFixed(2)}x)`;
-                } else if (pg != null) {
-                    winner = "PostgreSQL only";
-                } else if (ch != null) {
-                    winner = "ClickHouse only";
-                }
-
-                const pgStr = pg != null ? `${pg.toFixed(1)}ms` : "failed";
                 const chStr = ch != null ? `${ch.toFixed(1)}ms` : "failed";
 
-                log(
-                    `[INGEST] Ingested "${ev.event_type}" | PG: ${pgStr} | CH: ${chStr} | Winner: ${winner}`,
-                );
+                log(`[INGEST] Ingested "${ev.event_type}" | CH: ${chStr}`);
             });
         </script>
     </body>

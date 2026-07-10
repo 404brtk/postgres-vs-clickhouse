@@ -211,20 +211,7 @@
                                 align-items: center;
                             "
                         >
-                            <select id="query-db" style="width: 120px">
-                                <option value="clickhouse">ClickHouse</option>
-                                <option value="postgres">PostgreSQL</option>
-                            </select>
                             <button onclick="runQuery()">Run Query</button>
-                            <button
-                                onclick="compareQuery()"
-                                style="
-                                    background-color: #2563eb;
-                                    border-color: #1d4ed8;
-                                "
-                            >
-                                Compare Databases
-                            </button>
                             <button
                                 onclick="loadOverview()"
                                 style="margin-left: auto"
@@ -647,15 +634,9 @@
                     );
                     const data = await res.json();
 
-                    const pg = data.timings_ms.postgres;
                     const ch = data.timings_ms.clickhouse;
-                    const winner =
-                        pg > ch
-                            ? `ClickHouse (${(pg / ch).toFixed(1)}x)`
-                            : `PostgreSQL (${(ch / pg).toFixed(1)}x)`;
-
                     log(
-                        `[INGEST] Ingested "${eventType}" | PG: ${pg.toFixed(1)}ms | CH: ${ch.toFixed(1)}ms | Winner: ${winner}`,
+                        `[INGEST] Ingested "${eventType}" | CH: ${ch.toFixed(1)}ms`,
                     );
                     await fetchProperties();
                 } catch (err) {
@@ -784,10 +765,8 @@
 
             async function runQuery() {
                 const spec = buildQuerySpec();
-                const db = document.getElementById("query-db").value;
-                spec.target_db = db;
 
-                log(`[SYSTEM] Executing query on ${db.toUpperCase()}...`);
+                log(`[SYSTEM] Executing query on ClickHouse...`);
 
                 try {
                     const res = await fetch(getApiUrl("/api/analytics/query"), {
@@ -808,50 +787,12 @@
                 }
             }
 
-            async function compareQuery() {
-                const spec = buildQuerySpec();
-                log(`[SYSTEM] Running comparison query on both databases...`);
-
-                try {
-                    const res = await fetch(
-                        getApiUrl("/api/analytics/compare"),
-                        {
-                            method: "POST",
-                            headers: { "Content-Type": "application/json" },
-                            body: JSON.stringify(spec),
-                        },
-                    );
-                    const data = await res.json();
-                    if (!res.ok) {
-                        throw new Error(data.detail || "Comparison failed");
-                    }
-
-                    const pg = data.timings_ms.postgres;
-                    const ch = data.timings_ms.clickhouse;
-                    const speedup = data.timings_ms.speedup;
-                    const winner =
-                        speedup >= 1
-                            ? `ClickHouse (${speedup.toFixed(1)}x)`
-                            : `PostgreSQL (${(1 / speedup).toFixed(1)}x)`;
-
-                    log(
-                        `[INGEST] Timing comparison | PG: ${pg.toFixed(1)}ms | CH: ${ch.toFixed(1)}ms | Speedup: ${winner}`,
-                    );
-                    renderQueryResultsTable(data.results);
-                } catch (err) {
-                    log(`[ERROR] Comparison failed: ${err.message}`, true);
-                }
-            }
-
             async function loadOverview() {
-                const db = document.getElementById("query-db").value;
-                log(
-                    `[SYSTEM] Loading overview stats from ${db.toUpperCase()}...`,
-                );
+                log(`[SYSTEM] Loading overview stats from ClickHouse...`);
 
                 try {
                     const res = await fetch(
-                        getApiUrl(`/api/analytics/overview?target_db=${db}`),
+                        getApiUrl(`/api/analytics/overview`),
                     );
                     const data = await res.json();
 
@@ -913,9 +854,7 @@
                     `;
                     });
 
-                    log(
-                        `[INGEST] Dashboard Overview loaded from ${db.toUpperCase()}.`,
-                    );
+                    log(`[INGEST] Dashboard Overview loaded.`);
                 } catch (err) {
                     log(
                         `[ERROR] Failed to load overview: ${err.message}`,

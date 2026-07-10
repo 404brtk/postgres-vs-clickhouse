@@ -1,12 +1,12 @@
-# Generic Analytics Microservice (Postgres vs ClickHouse)
+# Analytics Microservice
 
-A lightweight, schema-less event tracking and analytics microservice that records telemetry in parallel to **PostgreSQL** and **ClickHouse** and exposes a dynamic SQL query compiler.
+A lightweight, schema-less event tracking and analytics microservice that records telemetry to **ClickHouse** and exposes a dynamic SQL query compiler.
 
 ---
 
 ## How to Run
 
-1. Start the databases:
+1. Start the database:
     ```bash
     docker-compose up -d
     ```
@@ -72,7 +72,7 @@ For bulk data loading, ClickHouse's column-oriented design scales significantly 
 
 ## Querying Dynamic Aggregations (cURL Examples)
 
-You can query dynamic metrics, filters, and groupings directly from external business applications via `POST /api/analytics/query` or `POST /api/analytics/compare`.
+You can query dynamic metrics, filters, and groupings directly from external applications via `POST /api/analytics/query`.
 
 ### Example 1: Basic Pageviews & Unique Visitors
 
@@ -107,23 +107,5 @@ curl -X POST http://127.0.0.1:8000/api/analytics/query \
     ],
     "group_by": ["device"],
     "filters": []
-  }'
-```
-
-### Example 3: Compare Database Speed
-
-Measure execution times between Postgres and ClickHouse for custom analytics queries:
-
-```bash
-curl -X POST http://127.0.0.1:8000/api/analytics/compare \
-  -H "Content-Type: application/json" \
-  -d '{
-    "metrics": [
-      { "type": "avg", "field": "duration_sec", "alias": "avg_session_duration" }
-    ],
-    "group_by": ["pathname"],
-    "filters": [
-      { "field": "event_type", "operator": "eq", "value": "exit" }
-    ]
   }'
 ```
