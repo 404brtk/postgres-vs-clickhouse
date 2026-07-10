@@ -2,6 +2,7 @@ from datetime import datetime
 from typing import Any, Literal
 from pydantic import BaseModel
 
+
 class GenericEvent(BaseModel):
     event_type: str
     device: str | None = "desktop"
@@ -9,19 +10,25 @@ class GenericEvent(BaseModel):
     referrer: str = ""
     duration_sec: int | None = 0
 
-    model_config = {
-        "extra": "allow"
-    }
+    model_config = {"extra": "allow"}
+
+
+class TokenCreate(BaseModel):
+    site_id: str
+    scope: Literal["ingest", "read", "admin"]
+
 
 class MetricSpec(BaseModel):
     type: Literal["count", "uniq", "sum", "avg", "min", "max"]
     field: str | None = None
     alias: str | None = None
 
+
 class FilterSpec(BaseModel):
     field: str
     operator: Literal["eq", "neq", "gt", "gte", "lt", "lte", "in", "like"]
     value: Any
+
 
 class QuerySpec(BaseModel):
     start_date: datetime | None = None

@@ -6,56 +6,24 @@
         <title>Analytics Console</title>
         <link rel="stylesheet" href="/static/style.css" />
         <script src="/static/console.js"></script>
-        <style>
-            .fieldset {
-                border: 1px solid var(--border-color);
-                padding: 12px;
-                margin-bottom: 12px;
-            }
-            .fieldset-legend {
-                font-size: 11px;
-                color: var(--text-secondary);
-                text-transform: uppercase;
-                padding: 0 5px;
-                margin-bottom: 10px;
-            }
-            .guide-text {
-                font-size: 11px;
-                color: var(--text-secondary);
-                margin-bottom: 12px;
-                line-height: 1.4;
-            }
-            .protocol-warning {
-                background-color: #7f1d1d;
-                border: 1px solid #f87171;
-                color: #fca5a5;
-                padding: 8px 12px;
-                margin-bottom: 15px;
-                font-size: 11px;
-                display: none;
-            }
-        </style>
     </head>
     <body>
         <div class="container">
-            <div id="protocol-alert" class="protocol-warning">
-                WARNING: Opening this page directly via a file:// link blocks
-                API requests due to browser CORS security policies. Please use
-                the server URL instead:
-                <a
-                    href="http://127.0.0.1:8000/"
-                    style="
-                        color: #fff;
-                        font-weight: bold;
-                        text-decoration: underline;
-                    "
-                    >http://127.0.0.1:8000/</a
-                >
-            </div>
-
             <header>
                 <h1>Analytics Console</h1>
-                <div class="nav-links">
+                <div
+                    class="nav-links"
+                    style="display: flex; align-items: center; gap: 20px"
+                >
+                    <div class="token-container">
+                        <span class="token-label">API Token:</span>
+                        <input
+                            type="password"
+                            id="api-token-input"
+                            placeholder="Enter token..."
+                            class="token-input"
+                        />
+                    </div>
                     <a href="/demo" class="nav-link">Live Tracker Demo</a>
                 </div>
             </header>
@@ -63,14 +31,7 @@
             <div class="grid">
                 <div>
                     <div class="card">
-                        <h2>1. Ingest Custom Event</h2>
-                        <div class="guide-text">
-                            Simulate sending custom tracking events. You can
-                            define dynamic property names (e.g.
-                            <code>brand</code> or <code>price</code>) and
-                            values. The payload is stored concurrently in
-                            PostgreSQL and ClickHouse.
-                        </div>
+                        <h2>Ingest Custom Event</h2>
 
                         <div class="fieldset">
                             <div class="fieldset-legend">Event Metadata</div>
@@ -146,13 +107,7 @@
 
                 <div>
                     <div class="card">
-                        <h2>2. Query & Metric Sandbox</h2>
-                        <div class="guide-text">
-                            Build aggregate query requests. Choose metrics (like
-                            COUNT or SUM), grouping keys, or filter values. Run
-                            queries on either database or execute a direct
-                            comparison test.
-                        </div>
+                        <h2>Query & Metric Sandbox</h2>
 
                         <div class="form-group">
                             <label>Metrics / Aggregates</label>
@@ -251,9 +206,6 @@
                 style="margin-top: 20px"
             >
                 <h2>Dashboard Overview</h2>
-                <div class="guide-text">
-                    Aggregates computed dynamically from the active database.
-                </div>
                 <div class="form-row" style="gap: 20px; margin-bottom: 15px">
                     <div class="card" style="flex: 1; text-align: center">
                         <div
@@ -408,6 +360,49 @@
                 </div>
             </div>
 
+            <div class="card token-mgmt-card">
+                <h2>Token Management</h2>
+                <div class="token-mgmt-row">
+                    <div class="form-group">
+                        <label>Site ID</label>
+                        <input type="text" id="token-site-id" value="default" />
+                    </div>
+                    <div class="form-group">
+                        <label>Scope</label>
+                        <select id="token-scope">
+                            <option value="ingest">ingest</option>
+                            <option value="read">read</option>
+                            <option value="admin">admin</option>
+                        </select>
+                    </div>
+                    <div class="token-mgmt-btn-group">
+                        <span class="token-mgmt-btn-spacer">.</span>
+                        <button onclick="createToken()" class="token-mgmt-btn">
+                            Generate Token
+                        </button>
+                    </div>
+                    <div class="token-mgmt-btn-group">
+                        <span class="token-mgmt-btn-spacer">.</span>
+                        <button onclick="loadTokens()" class="token-mgmt-btn">
+                            Refresh List
+                        </button>
+                    </div>
+                </div>
+                <div id="token-created" class="hidden token-created-box"></div>
+                <table id="token-table" class="token-table">
+                    <thead>
+                        <tr>
+                            <th>Token</th>
+                            <th>Site ID</th>
+                            <th>Scope</th>
+                            <th>Created</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody id="token-table-body"></tbody>
+                </table>
+            </div>
+
             <div class="terminal" id="terminal" style="height: 300px">
                 <div style="color: #38bdf8">
                     [SYSTEM] Analytics Console initialized. Run ingestion or
@@ -417,13 +412,33 @@
         </div>
 
         <script>
+            function getRequestHeaders(extraHeaders = {}) {
+                const headers = { ...extraHeaders };
+                const tokenInput = document.getElementById("api-token-input");
+                const token = tokenInput ? tokenInput.value.trim() : "";
+                if (token) {
+                    headers["Authorization"] = `Bearer ${token}`;
+                }
+                return headers;
+            }
+
+            function isAuthError(res) {
+                if (res.status === 401) {
+                    log("[AUTH] Invalid or missing API token.", true);
+                    return true;
+                }
+                return false;
+            }
+
             let availableProperties = [];
 
             async function fetchProperties() {
                 try {
                     const res = await fetch(
                         getApiUrl("/api/analytics/properties"),
+                        { headers: getRequestHeaders() },
                     );
+                    if (isAuthError(res)) return;
                     availableProperties = await res.json();
                 } catch (err) {
                     console.error("Failed to load property keys:", err);
@@ -628,11 +643,17 @@
                         getApiUrl("/api/analytics/ingest"),
                         {
                             method: "POST",
-                            headers: { "Content-Type": "application/json" },
+                            headers: getRequestHeaders({
+                                "Content-Type": "application/json",
+                            }),
                             body: JSON.stringify(payload),
                         },
                     );
+                    if (isAuthError(res)) return;
                     const data = await res.json();
+                    if (!res.ok) {
+                        throw new Error(data.detail || "Ingestion failed");
+                    }
 
                     const ch = data.timings_ms.clickhouse;
                     log(
@@ -771,9 +792,12 @@
                 try {
                     const res = await fetch(getApiUrl("/api/analytics/query"), {
                         method: "POST",
-                        headers: { "Content-Type": "application/json" },
+                        headers: getRequestHeaders({
+                            "Content-Type": "application/json",
+                        }),
                         body: JSON.stringify(spec),
                     });
+                    if (isAuthError(res)) return;
                     const data = await res.json();
                     if (!res.ok) {
                         throw new Error(data.detail || "Query failed");
@@ -793,7 +817,9 @@
                 try {
                     const res = await fetch(
                         getApiUrl(`/api/analytics/overview`),
+                        { headers: getRequestHeaders() },
                     );
+                    if (isAuthError(res)) return;
                     const data = await res.json();
 
                     document
@@ -876,7 +902,9 @@
                 try {
                     const res = await fetch(getApiUrl("/api/analytics/clear"), {
                         method: "POST",
+                        headers: getRequestHeaders(),
                     });
+                    if (isAuthError(res)) return;
                     const data = await res.json();
                     log(`[INGEST] ${data.message}`);
 
@@ -890,12 +918,101 @@
                 }
             }
 
-            async function init() {
-                if (window.location.protocol === "file:") {
-                    document.getElementById("protocol-alert").style.display =
-                        "block";
+            async function createToken() {
+                const siteId = document.getElementById("token-site-id").value.trim();
+                const scope = document.getElementById("token-scope").value;
+                if (!siteId) {
+                    log("[ERROR] Site ID is required.", true);
+                    return;
                 }
+                try {
+                    const res = await fetch(getApiUrl("/api/tokens"), {
+                        method: "POST",
+                        headers: getRequestHeaders({
+                            "Content-Type": "application/json",
+                        }),
+                        body: JSON.stringify({ site_id: siteId, scope }),
+                    });
+                    if (isAuthError(res)) return;
+                    const data = await res.json();
+                    if (!res.ok) {
+                        throw new Error(data.detail || "Failed to create token");
+                    }
+                    const createdDiv = document.getElementById("token-created");
+                    createdDiv.textContent = `New token: ${data.token}`;
+                    createdDiv.classList.remove("hidden");
+                    log(`[TOKEN] Created ${scope} token for site "${siteId}"`);
+                    await loadTokens();
+                } catch (err) {
+                    log(`[ERROR] ${err.message}`, true);
+                }
+            }
+
+            async function loadTokens() {
+                try {
+                    const res = await fetch(getApiUrl("/api/tokens"), {
+                        headers: getRequestHeaders(),
+                    });
+                    if (isAuthError(res)) return;
+                    const data = await res.json();
+                    if (!res.ok) {
+                        throw new Error(data.detail || "Failed to load tokens");
+                    }
+                    const tbody = document.getElementById("token-table-body");
+                    tbody.innerHTML = "";
+                    data.forEach((t) => {
+                        const displayToken =
+                            t.token.length > 20
+                                ? t.token.slice(0, 8) + "..." + t.token.slice(-8)
+                                : t.token;
+                        tbody.innerHTML += `
+                        <tr>
+                            <td class="token-cell" title="${t.token}">${displayToken}</td>
+                            <td>${t.site_id}</td>
+                            <td>${t.scope}</td>
+                            <td>${t.created_at}</td>
+                            <td><button onclick="revokeToken('${t.token}')" class="revoke-btn">Revoke</button></td>
+                        </tr>`;
+                    });
+                } catch (err) {
+                    log(`[ERROR] ${err.message}`, true);
+                }
+            }
+
+            async function revokeToken(token) {
+                if (!confirm("Revoke this token? This cannot be undone.")) return;
+                try {
+                    const res = await fetch(getApiUrl(`/api/tokens/${token}`), {
+                        method: "DELETE",
+                        headers: getRequestHeaders(),
+                    });
+                    if (isAuthError(res)) return;
+                    const data = await res.json();
+                    if (!res.ok) {
+                        throw new Error(data.detail || "Failed to revoke token");
+                    }
+                    log(`[TOKEN] Token revoked.`);
+                    await loadTokens();
+                } catch (err) {
+                    log(`[ERROR] ${err.message}`, true);
+                }
+            }
+
+            async function init() {
+                const tokenInput = document.getElementById("api-token-input");
+                if (tokenInput) {
+                    tokenInput.value =
+                        localStorage.getItem("analytics_api_token") || "";
+                    tokenInput.addEventListener("input", (e) => {
+                        localStorage.setItem(
+                            "analytics_api_token",
+                            e.target.value.trim(),
+                        );
+                    });
+                }
+
                 await fetchProperties();
+                await loadTokens();
             }
 
             init();

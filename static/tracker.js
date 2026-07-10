@@ -4,19 +4,24 @@
 
     const currentScript =
         document.getElementById("tracker-script") || document.currentScript;
-    const siteId = currentScript
-        ? currentScript.getAttribute("data-site-id")
-        : "default";
-    const apiEndpoint = currentScript
-        ? currentScript.getAttribute("data-endpoint") || ""
+    const trackerToken = currentScript
+        ? currentScript.getAttribute("data-token") || ""
         : "";
-    let endpointPath = currentScript
-        ? currentScript.getAttribute("data-endpoint-path") || "/api/events"
-        : "/api/events";
+    let trackerEndpoint = currentScript
+        ? currentScript.getAttribute("data-endpoint") || "/api/analytics/ingest"
+        : "/api/analytics/ingest";
 
-    window.setTrackerEndpointPath = function (path) {
-        endpointPath = path;
+    window.setTrackerEndpoint = function (url) {
+        trackerEndpoint = url;
     };
+
+    function getRequestHeaders() {
+        const headers = { "Content-Type": "application/json" };
+        if (trackerToken) {
+            headers["Authorization"] = `Bearer ${trackerToken}`;
+        }
+        return headers;
+    }
 
     let entryTime = performance.now();
 
@@ -37,11 +42,9 @@
 
     async function send(event) {
         try {
-            const response = await fetch(`${apiEndpoint}${endpointPath}`, {
+            const response = await fetch(trackerEndpoint, {
                 method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                },
+                headers: getRequestHeaders(),
                 body: JSON.stringify(event),
             });
             const data = await response.json();
@@ -114,10 +117,12 @@
         exitSent = true;
         const durationSec = Math.round((performance.now() - entryTime) / 1000);
         const event = buildEvent("exit", { duration_sec: durationSec });
-        const blob = new Blob([JSON.stringify(event)], {
-            type: "application/json",
-        });
-        navigator.sendBeacon(`${apiEndpoint}${endpointPath}`, blob);
+        fetch(trackerEndpoint, {
+            method: "POST",
+            headers: getRequestHeaders(),
+            body: JSON.stringify(event),
+            keepalive: true,
+        }).catch(() => {});
         window.dispatchEvent(
             new CustomEvent("tracker:track", {
                 detail: { event },
