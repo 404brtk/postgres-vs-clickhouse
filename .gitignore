@@ -16,3 +16,4 @@ wheels/
 # Secrets
 .secret_key
 .env
+policy.yaml
