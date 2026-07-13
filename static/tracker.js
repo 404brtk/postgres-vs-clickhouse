@@ -4,15 +4,22 @@
 
     const currentScript =
         document.getElementById("tracker-script") || document.currentScript;
-    const trackerToken = currentScript
+    let trackerToken = currentScript
         ? currentScript.getAttribute("data-token") || ""
         : "";
+    if (!trackerToken && typeof window !== "undefined" && window.localStorage) {
+        trackerToken = window.localStorage.getItem("tracker_demo_token") || "";
+    }
     let trackerEndpoint = currentScript
         ? currentScript.getAttribute("data-endpoint") || "/api/analytics/ingest"
         : "/api/analytics/ingest";
 
     window.setTrackerEndpoint = function (url) {
         trackerEndpoint = url;
+    };
+
+    window.setTrackerToken = function (token) {
+        trackerToken = token;
     };
 
     function getRequestHeaders() {

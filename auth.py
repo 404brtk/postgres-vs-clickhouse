@@ -1,45 +1,31 @@
-import config
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from typing import Annotated
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from database import get_ch_client
+from sqlalchemy.orm import Session
+import config
+from database_pg import get_db, APIToken, UserSession
+from models import TokenScope
 
 security_scheme = HTTPBearer(auto_error=False)
-
-INGEST = "ingest"
-READ = "read"
-ADMIN = "admin"
 
 
 @dataclass
 class TokenContext:
     site_id: str
     scope: str
-
-
-def _lookup_token(token: str) -> TokenContext | None:
-    ch_client = get_ch_client()
-    try:
-        res = ch_client.query(
-            "SELECT site_id, scope FROM api_tokens WHERE token = %(token)s LIMIT 1",
-            {"token": token},
-        )
-        if not res.result_rows:
-            return None
-        site_id, scope = res.result_rows[0]
-        return TokenContext(site_id=site_id, scope=str(scope))
-    finally:
-        ch_client.close()
+    user_id: int | None = None
 
 
 def verify_api_token(
     credentials: Annotated[
         HTTPAuthorizationCredentials | None, Depends(security_scheme)
     ],
+    db: Session = Depends(get_db),
 ) -> TokenContext:
     if config.AUTH_DISABLED:
-        return TokenContext(site_id=config.DEFAULT_SITE_ID, scope=ADMIN)
+        return TokenContext(site_id=config.DEFAULT_SITE_ID, scope=TokenScope.ADMIN)
 
     if not credentials or not credentials.credentials:
         raise HTTPException(
@@ -48,14 +34,29 @@ def verify_api_token(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    ctx = _lookup_token(credentials.credentials)
-    if ctx is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid or missing API authorization token.",
-            headers={"WWW-Authenticate": "Bearer"},
+    token_str = credentials.credentials
+
+    session = db.query(UserSession).filter(UserSession.token == token_str).first()
+    if session:
+        if session.expires_at > datetime.now(timezone.utc).replace(tzinfo=None):
+            return TokenContext(
+                site_id=config.DEFAULT_SITE_ID, scope=TokenScope.ADMIN, user_id=session.user_id
+            )
+        else:
+            db.delete(session)
+            db.commit()
+
+    api_token = db.query(APIToken).filter(APIToken.token == token_str).first()
+    if api_token:
+        return TokenContext(
+            site_id=api_token.site_id, scope=api_token.scope, user_id=api_token.user_id
         )
-    return ctx
+
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Invalid or missing API authorization token.",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
 
 
 def require_scope(*allowed_scopes: str):

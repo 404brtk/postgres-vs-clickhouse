@@ -7,7 +7,7 @@
         <script
             id="tracker-script"
             src="/static/tracker.js"
-            data-token="demo-ingest-token"
+            data-token=""
             data-endpoint="/api/analytics/ingest"
             defer
         ></script>
@@ -18,10 +18,15 @@
         <div class="container">
             <header>
                 <h1>Event Tracker</h1>
-                <a href="/" class="nav-link" style="margin-top: 0"
+                <a href="/" class="nav-link nav-link-top-0"
                     >Analytics Console</a
                 >
             </header>
+ 
+            <div class="fieldset token-input-fieldset">
+                <span class="guide-text guide-text-small">Tracker Ingestion Token:</span>
+                <input type="text" id="tracker-token-input" placeholder="Paste your generated token here..." />
+            </div>
 
             <div class="actions">
                 <button data-event="view" data-target="19896" data-category="9">
@@ -52,8 +57,8 @@
                 </button>
             </div>
 
-            <div class="terminal" id="terminal" style="height: 350px">
-                <div style="color: #38bdf8">
+            <div class="terminal demo-terminal" id="terminal">
+                <div class="terminal-init-message">
                     Console initialized. Click simulate buttons to generate
                     activity.
                 </div>
@@ -61,6 +66,35 @@
         </div>
 
         <script>
+            const tokenInput = document.getElementById("tracker-token-input");
+            if (tokenInput) {
+                const savedToken = localStorage.getItem("tracker_demo_token");
+                if (savedToken) {
+                    tokenInput.value = savedToken;
+                }
+
+                function updateTrackerToken(token) {
+                    if (window.setTrackerToken) {
+                        window.setTrackerToken(token);
+                    } else {
+                        document.addEventListener("DOMContentLoaded", () => {
+                            if (window.setTrackerToken) {
+                                window.setTrackerToken(token);
+                            }
+                        });
+                    }
+                }
+
+                if (savedToken) {
+                    updateTrackerToken(savedToken);
+                }
+
+                tokenInput.addEventListener("input", (e) => {
+                    const val = e.target.value.trim();
+                    localStorage.setItem("tracker_demo_token", val);
+                    updateTrackerToken(val);
+                });
+            }
             window.addEventListener("tracker:track", (e) => {
                 const ev = e.detail.event;
                 const standardKeys = [

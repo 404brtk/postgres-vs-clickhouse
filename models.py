@@ -1,6 +1,13 @@
 from datetime import datetime
+from enum import Enum
 from typing import Any, Literal
 from pydantic import BaseModel
+
+
+class TokenScope(str, Enum):
+    INGEST = "ingest"
+    READ = "read"
+    ADMIN = "admin"
 
 
 class GenericEvent(BaseModel):
@@ -15,7 +22,7 @@ class GenericEvent(BaseModel):
 
 class TokenCreate(BaseModel):
     site_id: str
-    scope: Literal["ingest", "read", "admin"]
+    scope: TokenScope
 
 
 class MetricSpec(BaseModel):
@@ -37,3 +44,14 @@ class QuerySpec(BaseModel):
     group_by: list[str] | None = None
     filters: list[FilterSpec] | None = None
     limit: int | None = 100
+
+
+class UserRegister(BaseModel):
+    username: str
+    password: str
+
+
+class UserLogin(BaseModel):
+    username: str
+    password: str
+

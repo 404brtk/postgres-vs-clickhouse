@@ -11,10 +11,19 @@ CH_PORT = 8123
 CH_USER = "default"
 CH_PASSWORD = "clickhouse_password"
 CH_DB = "default"
-ANALYTICS_API_TOKEN = os.environ.get("ANALYTICS_API_TOKEN", "")
-ANALYTICS_INGEST_TOKEN = os.environ.get("ANALYTICS_INGEST_TOKEN", "demo-ingest-token")
 AUTH_DISABLED = os.environ.get("AUTH_DISABLED", "").lower() in ("1", "true", "yes")
 DEFAULT_SITE_ID = os.environ.get("DEFAULT_SITE_ID", "default")
+
+PG_HOST = os.environ.get("PG_HOST", "localhost")
+PG_PORT = int(os.environ.get("PG_PORT", "5432"))
+PG_USER = os.environ.get("PG_USER", "postgres")
+PG_PASSWORD = os.environ.get("PG_PASSWORD", "postgres_password")
+PG_DB = os.environ.get("PG_DB", "metadata_db")
+
+DATABASE_URL = os.environ.get(
+    "DATABASE_URL",
+    f"postgresql+psycopg://{PG_USER}:{PG_PASSWORD}@{PG_HOST}:{PG_PORT}/{PG_DB}"
+)
 
 SECRET_KEY_FILE = ".secret_key"
 try:

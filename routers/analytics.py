@@ -3,10 +3,12 @@ import random
 from datetime import datetime
 from typing import Annotated, Union
 from fastapi import APIRouter, Depends, HTTPException, Request
+from sqlalchemy.orm import Session
 from config import generate_user_hash
 from database import execute_sql, get_ch_client
 from models import GenericEvent, QuerySpec
 from auth import TokenContext, require_scope
+from database_pg import get_db, APIToken
 
 router = APIRouter()
 
@@ -38,11 +40,33 @@ def resolve_field(field_name: str, for_numeric_aggregation: bool = False) -> str
     raise ValueError(f"Invalid field name: {field_name}")
 
 
+def check_site_access(site_id: str, ctx: TokenContext, db: Session):
+    if ctx.scope == "admin":
+        if ctx.user_id is not None:
+            exists = (
+                db.query(APIToken)
+                .filter(APIToken.user_id == ctx.user_id, APIToken.site_id == site_id)
+                .first()
+            )
+            if not exists:
+                raise HTTPException(
+                    status_code=403,
+                    detail="You do not have access to this site ID.",
+                )
+    else:
+        if ctx.site_id != site_id:
+            raise HTTPException(
+                status_code=403,
+                detail="Token is not authorized for this site ID.",
+            )
+
+
 @router.post("/api/analytics/ingest")
 def create_events(
     payload: Union[GenericEvent, list[GenericEvent]],
     request: Request,
     ctx: Annotated[TokenContext, Depends(require_scope("ingest", "admin"))],
+    db: Session = Depends(get_db),
 ):
     events = [payload] if isinstance(payload, GenericEvent) else payload
 
@@ -57,10 +81,21 @@ def create_events(
 
         extra = ev.model_extra or {}
         custom_user_id = extra.pop("user_id", None)
+        custom_site_id = extra.pop("site_id", None)
+
         try:
-            ev_user_id = int(custom_user_id) if custom_user_id is not None else user_id
+            ev_user_id = (
+                int(custom_user_id) if custom_user_id is not None else user_id
+            )
         except Exception:
             ev_user_id = user_id
+
+        target_site_id = (
+            custom_site_id
+            if (ctx.scope == "admin" and custom_site_id)
+            else ctx.site_id
+        )
+        check_site_access(target_site_id, ctx, db)
 
         properties = {k: str(v) for k, v in extra.items()}
 
@@ -68,7 +103,7 @@ def create_events(
             (
                 event_id,
                 ev_user_id,
-                ctx.site_id,
+                target_site_id,
                 ev.event_type,
                 event_time,
                 ev.device or "desktop",
@@ -101,9 +136,9 @@ def create_events(
         ch_client.close()
     except Exception as e:
         raise HTTPException(
-            status_code=500, detail=f"Failed to insert into ClickHouse: {str(e)}"
+            status_code=500,
+            detail=f"Failed to write events to ClickHouse: {str(e)}",
         )
-
     elapsed_ch = (time.perf_counter() - start_ch) * 1000
 
     return {
@@ -116,12 +151,15 @@ def create_events(
 @router.post("/api/analytics/clear")
 def clear_analytics_data(
     ctx: Annotated[TokenContext, Depends(require_scope("admin"))],
+    site_id: str = "default",
+    db: Session = Depends(get_db),
 ):
+    check_site_access(site_id, ctx, db)
     try:
         ch_client = get_ch_client()
         ch_client.command(
             "ALTER TABLE events DELETE WHERE site_id = %(site_id)s",
-            {"site_id": ctx.site_id},
+            {"site_id": site_id},
         )
         ch_client.close()
     except Exception as e:
@@ -130,7 +168,7 @@ def clear_analytics_data(
         )
     return {
         "status": "success",
-        "message": f"All events cleared for site '{ctx.site_id}'.",
+        "message": f"All events cleared for site '{site_id}'.",
     }
 
 
@@ -144,79 +182,84 @@ def compile_sql_query(spec: QuerySpec, site_id: str) -> tuple[str, dict]:
     if spec.group_by:
         for gb in spec.group_by:
             resolved = resolve_field(gb)
-            select_parts.append(f"{resolved} AS {gb.replace('.', '_')}")
+            select_parts.append(f"{resolved} AS `{gb}`")
             group_by_cols.append(resolved)
 
-    for m in spec.metrics:
-        alias = m.alias or f"{m.type}_{m.field or 'all'}"
-        clean_alias = "".join(c for c in alias if c.isalnum() or c == "_")
-
-        is_numeric = m.type in ("sum", "avg")
-
-        if m.field:
-            resolved = resolve_field(m.field, for_numeric_aggregation=is_numeric)
-            if m.type == "count":
-                expr = f"COUNT({resolved})" if m.field != "*" else "COUNT(*)"
-            elif m.type == "uniq":
-                expr = f"uniq({resolved})"
-            elif m.type in ("sum", "avg", "min", "max"):
-                expr = f"{m.type.upper()}({resolved})"
-            else:
-                raise ValueError(f"Unsupported metric type: {m.type}")
+    for idx, m in enumerate(spec.metrics):
+        alias = m.alias if m.alias else f"metric_{idx}"
+        alias_escaped = f"`{alias}`"
+        if m.type == "count":
+            select_parts.append(f"COUNT(*) AS {alias_escaped}")
         else:
-            if m.type == "count":
-                expr = "COUNT(*)"
-            else:
-                raise ValueError(f"{m.type} metric requires a field")
-
-        select_parts.append(f"{expr} AS {clean_alias}")
+            if not m.field:
+                raise ValueError(f"Field is required for metric type {m.type}")
+            resolved_field = resolve_field(m.field, for_numeric_aggregation=True)
+            if m.type == "uniq":
+                select_parts.append(f"uniq({resolved_field}) AS {alias_escaped}")
+            elif m.type == "sum":
+                select_parts.append(f"sum({resolved_field}) AS {alias_escaped}")
+            elif m.type == "avg":
+                select_parts.append(f"avg({resolved_field}) AS {alias_escaped}")
+            elif m.type == "min":
+                select_parts.append(f"min({resolved_field}) AS {alias_escaped}")
+            elif m.type == "max":
+                select_parts.append(f"max({resolved_field}) AS {alias_escaped}")
 
     where_parts = ["site_id = %(site_id)s"]
     params = {"site_id": site_id}
 
     if spec.start_date:
         where_parts.append("event_time >= %(start_date)s")
-        params["start_date"] = spec.start_date
+        params["start_date"] = spec.start_date.strftime("%Y-%m-%d %H:%M:%S")
 
     if spec.end_date:
         where_parts.append("event_time <= %(end_date)s")
-        params["end_date"] = spec.end_date
+        params["end_date"] = spec.end_date.strftime("%Y-%m-%d %H:%M:%S")
 
     if spec.filters:
         for idx, f in enumerate(spec.filters):
-            resolved_field = resolve_field(f.field)
-
-            op_map = {
-                "eq": "=",
-                "neq": "!=",
-                "gt": ">",
-                "gte": ">=",
-                "lt": "<",
-                "lte": "<=",
-                "in": "IN",
-                "like": "LIKE",
-            }
-            if f.operator not in op_map:
-                raise ValueError(f"Unsupported operator: {f.operator}")
-
-            sql_op = op_map[f.operator]
-            param_key = f"filter_val_{idx}"
-
-            if f.operator == "in":
-                if not isinstance(f.value, list):
-                    raise ValueError("IN operator requires a list value")
-                where_parts.append(f"{resolved_field} {sql_op} %({param_key})s")
-                params[param_key] = tuple(f.value)
-            else:
-                where_parts.append(f"{resolved_field} {sql_op} %({param_key})s")
-                params[param_key] = f.value
+            resolved_f = resolve_field(f.field)
+            param_name = f"filter_val_{idx}"
+            if f.operator == "eq":
+                where_parts.append(f"{resolved_f} = %({param_name})s")
+                params[param_name] = f.value
+            elif f.operator == "neq":
+                where_parts.append(f"{resolved_f} != %({param_name})s")
+                params[param_name] = f.value
+            elif f.operator == "gt":
+                where_parts.append(f"{resolved_f} > %({param_name})s")
+                params[param_name] = f.value
+            elif f.operator == "gte":
+                where_parts.append(f"{resolved_f} >= %({param_name})s")
+                params[param_name] = f.value
+            elif f.operator == "lt":
+                where_parts.append(f"{resolved_f} < %({param_name})s")
+                params[param_name] = f.value
+            elif f.operator == "lte":
+                where_parts.append(f"{resolved_f} <= %({param_name})s")
+                params[param_name] = f.value
+            elif f.operator == "in":
+                where_parts.append(f"{resolved_f} IN %({param_name})s")
+                params[param_name] = f.value
+            elif f.operator == "like":
+                where_parts.append(f"{resolved_f} LIKE %({param_name})s")
+                params[param_name] = f.value
 
     select_clause = ", ".join(select_parts)
-    where_clause = f"WHERE {' AND '.join(where_parts)}"
-    group_by_clause = f"GROUP BY {', '.join(group_by_cols)}" if group_by_cols else ""
-    limit_clause = f"LIMIT {int(spec.limit)}" if spec.limit is not None else ""
+    where_clause = " AND ".join(where_parts)
+    group_clause = (
+        f"GROUP BY {', '.join(group_by_cols)}" if group_by_cols else ""
+    )
+    limit_clause = f"LIMIT {spec.limit}" if spec.limit else ""
 
-    query_sql = f"SELECT {select_clause} FROM events {where_clause} {group_by_clause} {limit_clause};"
+    query_sql = f"""
+        SELECT {select_clause}
+        FROM events
+        WHERE {where_clause}
+        {group_clause}
+        ORDER BY {group_by_cols[0] if group_by_cols else '1'} ASC
+        {limit_clause}
+    """
     return query_sql, params
 
 
@@ -224,9 +267,12 @@ def compile_sql_query(spec: QuerySpec, site_id: str) -> tuple[str, dict]:
 def query_analytics_events(
     spec: QuerySpec,
     ctx: Annotated[TokenContext, Depends(require_scope("read", "admin"))],
+    site_id: str = "default",
+    db: Session = Depends(get_db),
 ):
+    check_site_access(site_id, ctx, db)
     try:
-        sql, params = compile_sql_query(spec, ctx.site_id)
+        sql, params = compile_sql_query(spec, site_id)
         results = execute_sql(sql, params)
         return results
     except ValueError as e:
@@ -238,13 +284,16 @@ def query_analytics_events(
 @router.get("/api/analytics/properties")
 def get_available_properties(
     ctx: Annotated[TokenContext, Depends(require_scope("read", "admin"))],
+    site_id: str = "default",
+    db: Session = Depends(get_db),
 ):
+    check_site_access(site_id, ctx, db)
     keys = set()
     try:
         ch_client = get_ch_client()
         res = ch_client.query(
             "SELECT DISTINCT arrayJoin(mapKeys(properties)) AS key FROM events WHERE site_id = %(site_id)s",
-            {"site_id": ctx.site_id},
+            {"site_id": site_id},
         )
         for row in res.result_rows:
             keys.add(row[0])
@@ -257,12 +306,15 @@ def get_available_properties(
 @router.get("/api/analytics/overview")
 def get_analytics_overview(
     ctx: Annotated[TokenContext, Depends(require_scope("read", "admin"))],
+    site_id: str = "default",
     start_date: datetime | None = None,
     end_date: datetime | None = None,
+    db: Session = Depends(get_db),
 ):
+    check_site_access(site_id, ctx, db)
     try:
         where_parts = ["site_id = %(site_id)s"]
-        params: dict = {"site_id": ctx.site_id}
+        params: dict = {"site_id": site_id}
 
         if start_date:
             where_parts.append("event_time >= %(start_date)s")

@@ -11,22 +11,113 @@
         <div class="container">
             <header>
                 <h1>Analytics Console</h1>
-                <div
-                    class="nav-links"
-                    style="display: flex; align-items: center; gap: 20px"
-                >
-                    <div class="token-container">
-                        <span class="token-label">API Token:</span>
-                        <input
-                            type="password"
-                            id="api-token-input"
-                            placeholder="Enter token..."
-                            class="token-input"
-                        />
+                <div class="nav-links">
+                    <div class="site-selector-container">
+                        <span class="guide-text site-selector-label">Active Site:</span>
+                        <select id="active-site-select" onchange="onSiteSelectChange()"></select>
                     </div>
                     <a href="/demo" class="nav-link">Live Tracker Demo</a>
+                    <button id="logout-btn" onclick="logout()" class="hidden">Logout</button>
                 </div>
             </header>
+
+            <div
+                class="section overview-results-section hidden"
+                id="overview-results"
+            >
+                <h2>Dashboard Overview</h2>
+                <div class="form-row metrics-grid-row">
+                    <div class="card metric-card">
+                        <div class="metric-title">
+                            PAGEVIEWS
+                        </div>
+                        <div
+                            id="ov-val-views"
+                            class="metric-value views"
+                        >
+                            0
+                        </div>
+                    </div>
+                    <div class="card metric-card">
+                        <div class="metric-title">
+                            UNIQUE VISITORS
+                        </div>
+                        <div
+                            id="ov-val-visitors"
+                            class="metric-value visitors"
+                        >
+                            0
+                        </div>
+                    </div>
+                    <div class="card metric-card">
+                        <div class="metric-title">
+                            TOTAL EVENTS
+                        </div>
+                        <div
+                            id="ov-val-events"
+                            class="metric-value events"
+                        >
+                            0
+                        </div>
+                    </div>
+                    <div class="card metric-card">
+                        <div class="metric-title">
+                            AVG TIME ON SITE
+                        </div>
+                        <div
+                            id="ov-val-duration"
+                            class="metric-value duration"
+                        >
+                            0.0s
+                        </div>
+                    </div>
+                </div>
+                <div class="form-row overview-details-row">
+                    <div class="card details-card">
+                        <h3>
+                            Top Pages
+                        </h3>
+                        <table id="ov-table-pages">
+                            <thead>
+                                <tr>
+                                    <th>Path</th>
+                                    <th>Views</th>
+                                    <th>Unique</th>
+                                </tr>
+                            </thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
+                    <div class="card details-card">
+                        <h3>
+                            Top Referrers
+                        </h3>
+                        <table id="ov-table-referrers">
+                            <thead>
+                                <tr>
+                                    <th>Referrer</th>
+                                    <th>Views</th>
+                                </tr>
+                            </thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
+                    <div class="card details-card">
+                        <h3>
+                            Device Splits
+                        </h3>
+                        <table id="ov-table-devices">
+                            <thead>
+                                <tr>
+                                    <th>Device</th>
+                                    <th>Views</th>
+                                </tr>
+                            </thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
 
             <div class="grid">
                 <div>
@@ -83,110 +174,66 @@
                             <div id="ingest-properties"></div>
                             <button
                                 onclick="addPropRow()"
-                                style="width: 100%; margin-top: 5px"
+                                class="btn-full-width-add"
                             >
                                 + Add Property
                             </button>
                         </div>
 
-                        <button
-                            onclick="sendEvent()"
-                            style="
-                                width: 100%;
-                                padding: 8px;
-                                background-color: #059669;
-                                border-color: #047857;
-                                font-weight: bold;
-                                margin-top: 10px;
-                            "
-                        >
+                        <button onclick="sendEvent()" class="btn-ingest-submit">
                             Send Event
                         </button>
                     </div>
                 </div>
 
                 <div>
-                    <div class="card">
+                    <div class="card query-sandbox-card">
                         <h2>Query & Metric Sandbox</h2>
 
                         <div class="form-group">
                             <label>Metrics / Aggregates</label>
-                            <div
-                                class="form-row"
-                                style="
-                                    margin-bottom: 5px;
-                                    font-size: 11px;
-                                    color: var(--text-secondary);
-                                "
-                            >
-                                <span style="width: 80px">Aggregate</span>
-                                <span style="width: 200px">Field / Column</span>
-                                <span style="width: 120px">Alias (AS)</span>
-                            </div>
                             <div id="query-metrics"></div>
                             <button
                                 onclick="addMetricRow()"
-                                style="margin-top: 5px; align-self: flex-start"
+                                class="btn-add-control"
                             >
                                 + Add Metric
                             </button>
                         </div>
 
-                        <div
-                            class="form-row"
-                            style="margin-top: 10px; gap: 20px"
-                        >
-                            <div class="form-group" style="flex: 1">
+                        <div class="form-row sandbox-bottom-row">
+                            <div class="form-group flex-1">
                                 <label>Group By Columns</label>
                                 <div id="query-group-by"></div>
                                 <button
                                     onclick="addGroupByRow()"
-                                    style="align-self: flex-start"
+                                    class="btn-align-left"
                                 >
                                     + Add Group By
                                 </button>
                             </div>
-                            <div class="form-group" style="flex: 1">
+                            <div class="form-group flex-1">
                                 <label>Filters</label>
                                 <div id="query-filters"></div>
                                 <button
                                     onclick="addFilterRow()"
-                                    style="align-self: flex-start"
+                                    class="btn-align-left"
                                 >
                                     + Add Filter
                                 </button>
                             </div>
                         </div>
 
-                        <div
-                            style="
-                                display: flex;
-                                gap: 8px;
-                                margin-top: 15px;
-                                align-items: center;
-                            "
-                        >
-                            <button onclick="runQuery()">Run Query</button>
-                            <button
-                                onclick="loadOverview()"
-                                style="margin-left: auto"
-                            >
-                                Load Dashboard Overview
-                            </button>
-                            <button
-                                onclick="clearAnalytics()"
-                                style="
-                                    background-color: #7f1d1d;
-                                    border-color: #b91c1c;
-                                "
-                            >
-                                Clear Analytics Data
-                            </button>
+                        <button onclick="runQuery()" class="btn-query-submit">Run Query</button>
+
+                        <div class="sandbox-utilities-row">
+                            <button onclick="loadOverview()">Refresh Overview</button>
+                            <button onclick="clearAnalytics()" class="danger-btn-text">Clear Data</button>
                         </div>
 
                         <div
                             id="query-results-table-container"
-                            style="margin-top: 15px; display: none"
+                            class="hidden"
                         >
                             <label>Query Results</label>
                             <table id="query-results-table">
@@ -196,166 +243,6 @@
                                 <tbody id="query-results-body"></tbody>
                             </table>
                         </div>
-                    </div>
-                </div>
-            </div>
-
-            <div
-                class="section hidden"
-                id="overview-results"
-                style="margin-top: 20px"
-            >
-                <h2>Dashboard Overview</h2>
-                <div class="form-row" style="gap: 20px; margin-bottom: 15px">
-                    <div class="card" style="flex: 1; text-align: center">
-                        <div
-                            style="
-                                font-size: 11px;
-                                color: var(--text-secondary);
-                            "
-                        >
-                            PAGEVIEWS
-                        </div>
-                        <div
-                            id="ov-val-views"
-                            style="
-                                font-size: 20px;
-                                font-weight: bold;
-                                margin-top: 5px;
-                                color: #10b981;
-                            "
-                        >
-                            0
-                        </div>
-                    </div>
-                    <div class="card" style="flex: 1; text-align: center">
-                        <div
-                            style="
-                                font-size: 11px;
-                                color: var(--text-secondary);
-                            "
-                        >
-                            UNIQUE VISITORS
-                        </div>
-                        <div
-                            id="ov-val-visitors"
-                            style="
-                                font-size: 20px;
-                                font-weight: bold;
-                                margin-top: 5px;
-                                color: #3b82f6;
-                            "
-                        >
-                            0
-                        </div>
-                    </div>
-                    <div class="card" style="flex: 1; text-align: center">
-                        <div
-                            style="
-                                font-size: 11px;
-                                color: var(--text-secondary);
-                            "
-                        >
-                            TOTAL EVENTS
-                        </div>
-                        <div
-                            id="ov-val-events"
-                            style="
-                                font-size: 20px;
-                                font-weight: bold;
-                                margin-top: 5px;
-                                color: #f59e0b;
-                            "
-                        >
-                            0
-                        </div>
-                    </div>
-                    <div class="card" style="flex: 1; text-align: center">
-                        <div
-                            style="
-                                font-size: 11px;
-                                color: var(--text-secondary);
-                            "
-                        >
-                            AVG TIME ON SITE
-                        </div>
-                        <div
-                            id="ov-val-duration"
-                            style="
-                                font-size: 20px;
-                                font-weight: bold;
-                                margin-top: 5px;
-                                color: #a855f7;
-                            "
-                        >
-                            0.0s
-                        </div>
-                    </div>
-                </div>
-                <div
-                    class="form-row"
-                    style="gap: 20px; align-items: flex-start; flex-wrap: wrap"
-                >
-                    <div style="flex: 1; min-width: 250px" class="card">
-                        <h3
-                            style="
-                                font-size: 12px;
-                                color: #cbd5e1;
-                                margin-bottom: 8px;
-                            "
-                        >
-                            Top Pages
-                        </h3>
-                        <table id="ov-table-pages">
-                            <thead>
-                                <tr>
-                                    <th>Path</th>
-                                    <th>Views</th>
-                                    <th>Unique</th>
-                                </tr>
-                            </thead>
-                            <tbody></tbody>
-                        </table>
-                    </div>
-                    <div style="flex: 1; min-width: 250px" class="card">
-                        <h3
-                            style="
-                                font-size: 12px;
-                                color: #cbd5e1;
-                                margin-bottom: 8px;
-                            "
-                        >
-                            Top Referrers
-                        </h3>
-                        <table id="ov-table-referrers">
-                            <thead>
-                                <tr>
-                                    <th>Referrer</th>
-                                    <th>Views</th>
-                                </tr>
-                            </thead>
-                            <tbody></tbody>
-                        </table>
-                    </div>
-                    <div style="flex: 1; min-width: 250px" class="card">
-                        <h3
-                            style="
-                                font-size: 12px;
-                                color: #cbd5e1;
-                                margin-bottom: 8px;
-                            "
-                        >
-                            Device Splits
-                        </h3>
-                        <table id="ov-table-devices">
-                            <thead>
-                                <tr>
-                                    <th>Device</th>
-                                    <th>Views</th>
-                                </tr>
-                            </thead>
-                            <tbody></tbody>
-                        </table>
                     </div>
                 </div>
             </div>
@@ -403,19 +290,40 @@
                 </table>
             </div>
 
-            <div class="terminal" id="terminal" style="height: 300px">
-                <div style="color: #38bdf8">
+            <div class="terminal" id="terminal">
+                <div class="terminal-init-message">
                     [SYSTEM] Analytics Console initialized. Run ingestion or
                     queries above.
                 </div>
+            </div>
+        <div id="auth-modal" class="modal-overlay hidden">
+            <div class="modal-card">
+                <h2 id="auth-title" class="auth-title">Login</h2>
+                <p id="auth-subtitle" class="guide-text">Please log in to manage your console.</p>
+                <form onsubmit="event.preventDefault(); submitAuth();">
+                    <div class="form-group auth-form-group-10">
+                        <label class="auth-label">Username</label>
+                        <input type="text" id="auth-username" placeholder="admin" />
+                    </div>
+                    <div class="form-group auth-form-group-15">
+                        <label class="auth-label">Password</label>
+                        <input type="password" id="auth-password" placeholder="••••••••" />
+                    </div>
+                    <button type="submit" id="auth-submit-btn">
+                        Login
+                    </button>
+                </form>
+                <div id="auth-error" class="hidden"></div>
+                <p id="auth-toggle-link" onclick="toggleAuthMode()">
+                    Don't have an account? Register
+                </p>
             </div>
         </div>
 
         <script>
             function getRequestHeaders(extraHeaders = {}) {
                 const headers = { ...extraHeaders };
-                const tokenInput = document.getElementById("api-token-input");
-                const token = tokenInput ? tokenInput.value.trim() : "";
+                const token = localStorage.getItem("analytics_session_token") || "";
                 if (token) {
                     headers["Authorization"] = `Bearer ${token}`;
                 }
@@ -425,17 +333,30 @@
             function isAuthError(res) {
                 if (res.status === 401) {
                     log("[AUTH] Invalid or missing API token.", true);
+                    showLoginModal();
                     return true;
                 }
                 return false;
             }
 
+            let activeSiteId = "default";
+            let refreshInterval = null;
             let availableProperties = [];
+
+            function startLiveRefresh() {
+                if (refreshInterval) clearInterval(refreshInterval);
+                refreshInterval = setInterval(async () => {
+                    if (activeSiteId) {
+                        await fetchProperties();
+                        await loadOverview();
+                    }
+                }, 10000);
+            }
 
             async function fetchProperties() {
                 try {
                     const res = await fetch(
-                        getApiUrl("/api/analytics/properties"),
+                        getApiUrl(`/api/analytics/properties?site_id=${activeSiteId}`),
                         { headers: getRequestHeaders() },
                     );
                     if (isAuthError(res)) return;
@@ -488,9 +409,9 @@
                 html += `<option value="custom" ${selCustom}>[Custom Input...]</option>`;
                 html += `</select>`;
 
-                const style = isCustom ? "" : "display: none;";
+                const isHidden = isCustom ? "" : "hidden";
                 const customTextVal = isCustom ? renderVal : "";
-                html += `<input type="text" placeholder="Field name" class="field-custom-text" value="${customTextVal}" style="width: 150px; ${style}">`;
+                html += `<input type="text" placeholder="Field name" class="field-custom-text ${isHidden}" value="${customTextVal}">`;
 
                 return html;
             }
@@ -498,11 +419,11 @@
             function onFieldDropdownChange(selectEl) {
                 const customTextEl = selectEl.nextElementSibling;
                 if (selectEl.value === "custom") {
-                    customTextEl.style.display = "";
+                    customTextEl.classList.remove("hidden");
                     customTextEl.value = "";
                     customTextEl.focus();
                 } else {
-                    customTextEl.style.display = "none";
+                    customTextEl.classList.add("hidden");
                     customTextEl.value = selectEl.value;
                 }
             }
@@ -511,10 +432,9 @@
                 const container = document.getElementById("ingest-properties");
                 const div = document.createElement("div");
                 div.className = "form-row";
-                div.style.marginBottom = "5px";
                 div.innerHTML = `
-                <input type="text" placeholder="Key (e.g. price)" class="prop-key" style="width: 120px;">
-                <input type="text" placeholder="Value" class="prop-value" style="width: 120px;">
+                <input type="text" placeholder="Key (e.g. price)" class="prop-key">
+                <input type="text" placeholder="Value" class="prop-value">
                 <button onclick="removeRow(this)">Delete</button>
             `;
                 container.appendChild(div);
@@ -524,14 +444,13 @@
                 const container = document.getElementById("query-metrics");
                 const div = document.createElement("div");
                 div.className = "form-row";
-                div.style.marginBottom = "5px";
 
                 const dropdownHtml = buildFieldDropdown(
                     selectedVal || "event_id",
                 );
 
                 div.innerHTML = `
-                <select class="metric-type" style="width: 80px;">
+                <select class="metric-type">
                     <option value="count">COUNT</option>
                     <option value="uniq">UNIQ</option>
                     <option value="sum">SUM</option>
@@ -539,11 +458,11 @@
                     <option value="min">MIN</option>
                     <option value="max">MAX</option>
                 </select>
-                <div class="row-item" style="gap: 5px; align-items: center; margin-bottom: 0;">
+                <div class="flex-1">
                     ${dropdownHtml}
                 </div>
-                <input type="text" placeholder="Alias (e.g. sales)" class="metric-alias" style="width: 120px;">
-                <button onclick="removeRow(this)">Delete</button>
+                <input type="text" placeholder="as: alias" class="metric-alias">
+                <button onclick="removeRow(this)">✕</button>
             `;
                 container.appendChild(div);
 
@@ -555,17 +474,16 @@
                 const container = document.getElementById("query-group-by");
                 const div = document.createElement("div");
                 div.className = "form-row";
-                div.style.marginBottom = "5px";
 
                 const dropdownHtml = buildFieldDropdown(
                     selectedVal || "device",
                 );
 
                 div.innerHTML = `
-                <div class="row-item" style="gap: 5px; align-items: center; margin-bottom: 0;">
+                <div class="flex-1">
                     ${dropdownHtml}
                 </div>
-                <button onclick="removeRow(this)">Delete</button>
+                <button onclick="removeRow(this)">✕</button>
             `;
                 container.appendChild(div);
 
@@ -577,17 +495,16 @@
                 const container = document.getElementById("query-filters");
                 const div = document.createElement("div");
                 div.className = "form-row";
-                div.style.marginBottom = "5px";
 
                 const dropdownHtml = buildFieldDropdown(
                     selectedVal || "device",
                 );
 
                 div.innerHTML = `
-                <div class="row-item" style="gap: 5px; align-items: center; margin-bottom: 0;">
+                <div class="flex-1">
                     ${dropdownHtml}
                 </div>
-                <select class="filter-op" style="width: 60px;">
+                <select class="filter-op">
                     <option value="eq">=</option>
                     <option value="neq">!=</option>
                     <option value="gt">&gt;</option>
@@ -596,8 +513,8 @@
                     <option value="lte">&lt;=</option>
                     <option value="like">like</option>
                 </select>
-                <input type="text" placeholder="Value" class="filter-value" style="width: 100px;">
-                <button onclick="removeRow(this)">Delete</button>
+                <input type="text" placeholder="Value" class="filter-value">
+                <button onclick="removeRow(this)">✕</button>
             `;
                 container.appendChild(div);
 
@@ -606,6 +523,10 @@
             }
 
             async function sendEvent() {
+                if (!activeSiteId) {
+                    log("[ERROR] No active site selected. Please generate a token in the Token Management panel below to create your first site.", true);
+                    return;
+                }
                 const eventType = document.getElementById("ingest-type").value;
                 const device = document.getElementById("ingest-device").value;
                 const pathname = document.getElementById("ingest-path").value;
@@ -615,6 +536,7 @@
                     document.getElementById("ingest-duration").value;
 
                 const payload = {
+                    site_id: activeSiteId,
                     event_type: eventType,
                     device: device,
                     pathname: pathname,
@@ -758,11 +680,11 @@
                 bodyEl.innerHTML = "";
 
                 if (!Array.isArray(data) || data.length === 0) {
-                    container.style.display = "none";
+                    container.classList.add("hidden");
                     return;
                 }
 
-                container.style.display = "block";
+                container.classList.remove("hidden");
 
                 const keys = Object.keys(data[0]);
                 keys.forEach((key) => {
@@ -790,7 +712,7 @@
                 log(`[SYSTEM] Executing query on ClickHouse...`);
 
                 try {
-                    const res = await fetch(getApiUrl("/api/analytics/query"), {
+                    const res = await fetch(getApiUrl(`/api/analytics/query?site_id=${activeSiteId}`), {
                         method: "POST",
                         headers: getRequestHeaders({
                             "Content-Type": "application/json",
@@ -816,11 +738,14 @@
 
                 try {
                     const res = await fetch(
-                        getApiUrl(`/api/analytics/overview`),
+                        getApiUrl(`/api/analytics/overview?site_id=${activeSiteId}`),
                         { headers: getRequestHeaders() },
                     );
                     if (isAuthError(res)) return;
                     const data = await res.json();
+                    if (!res.ok) {
+                        throw new Error(data.detail || "Failed to load overview");
+                    }
 
                     document
                         .getElementById("overview-results")
@@ -900,7 +825,7 @@
                     "[SYSTEM] Purging generic analytics events from databases...",
                 );
                 try {
-                    const res = await fetch(getApiUrl("/api/analytics/clear"), {
+                    const res = await fetch(getApiUrl(`/api/analytics/clear?site_id=${activeSiteId}`), {
                         method: "POST",
                         headers: getRequestHeaders(),
                     });
@@ -942,6 +867,7 @@
                     createdDiv.textContent = `New token: ${data.token}`;
                     createdDiv.classList.remove("hidden");
                     log(`[TOKEN] Created ${scope} token for site "${siteId}"`);
+                    await loadSites(siteId);
                     await loadTokens();
                 } catch (err) {
                     log(`[ERROR] ${err.message}`, true);
@@ -998,24 +924,212 @@
                 }
             }
 
-            async function init() {
-                const tokenInput = document.getElementById("api-token-input");
-                if (tokenInput) {
-                    tokenInput.value =
-                        localStorage.getItem("analytics_api_token") || "";
-                    tokenInput.addEventListener("input", (e) => {
-                        localStorage.setItem(
-                            "analytics_api_token",
-                            e.target.value.trim(),
-                        );
+            async function loadSites(selectedSiteId = null) {
+                try {
+                    const res = await fetch(getApiUrl("/api/sites"), { headers: getRequestHeaders() });
+                    if (isAuthError(res)) return;
+                    const sites = await res.json();
+                    
+                    const selectEl = document.getElementById("active-site-select");
+                    if (!selectEl) return;
+                    
+                    if (sites.length === 0) {
+                        activeSiteId = "";
+                        localStorage.removeItem("active_site_id");
+                        selectEl.innerHTML = "<option value=''>No sites registered</option>";
+                        const tokenSiteIdInput = document.getElementById("token-site-id");
+                        if (tokenSiteIdInput) {
+                            tokenSiteIdInput.value = "";
+                        }
+                        document.getElementById("overview-results").classList.add("hidden");
+                        log("[SYSTEM] No sites registered. Generate a token below to get started.");
+                        return;
+                    }
+                    
+                    selectEl.innerHTML = "";
+                    sites.forEach(site => {
+                        const opt = document.createElement("option");
+                        opt.value = site;
+                        opt.innerText = site;
+                        selectEl.appendChild(opt);
                     });
+                    
+                    let targetSite = selectedSiteId || localStorage.getItem("active_site_id");
+                    if (targetSite && sites.includes(targetSite)) {
+                        activeSiteId = targetSite;
+                    } else if (!sites.includes(activeSiteId)) {
+                        activeSiteId = sites[0];
+                    }
+                    localStorage.setItem("active_site_id", activeSiteId);
+                    selectEl.value = activeSiteId;
+                    
+                    const tokenSiteIdInput = document.getElementById("token-site-id");
+                    if (tokenSiteIdInput) {
+                        tokenSiteIdInput.value = activeSiteId;
+                    }
+                    
+                    await fetchProperties();
+                    await loadOverview();
+                    startLiveRefresh();
+                } catch (err) {
+                    console.error("Failed to load sites:", err);
+                }
+            }
+
+            async function onSiteSelectChange() {
+                const selectEl = document.getElementById("active-site-select");
+                const val = selectEl.value;
+                if (!val) return;
+                
+                activeSiteId = val;
+                localStorage.setItem("active_site_id", activeSiteId);
+                const tokenSiteIdInput = document.getElementById("token-site-id");
+                if (tokenSiteIdInput) {
+                    tokenSiteIdInput.value = activeSiteId;
+                }
+                await fetchProperties();
+                await loadOverview();
+                await loadTokens();
+                startLiveRefresh();
+            }
+
+            async function checkAuthStatus() {
+                try {
+                    const res = await fetch(getApiUrl("/api/auth/status"));
+                    const data = await res.json();
+                    isRegistrationRequired = data.registration_required;
+
+                    if (isRegistrationRequired) {
+                        showRegisterModal();
+                    } else {
+                        const savedToken = localStorage.getItem("analytics_session_token");
+                        if (savedToken) {
+                            setSessionToken(savedToken);
+                            await loadSites();
+                            await loadTokens();
+                        } else {
+                            showLoginModal();
+                        }
+                    }
+                } catch (err) {
+                    console.error("Auth status check failed:", err);
+                }
+            }
+
+            function toggleAuthMode() {
+                isRegistrationRequired = !isRegistrationRequired;
+                if (isRegistrationRequired) {
+                    showRegisterModal();
+                } else {
+                    showLoginModal();
+                }
+            }
+
+            function showRegisterModal() {
+                document.getElementById("auth-modal").classList.remove("hidden");
+                document.getElementById("auth-title").innerText = "Create Account";
+                document.getElementById("auth-subtitle").innerText = "Configure your administrator credentials.";
+                document.getElementById("auth-submit-btn").innerText = "Register";
+                document.getElementById("auth-username").value = "";
+                document.getElementById("auth-password").value = "";
+                document.getElementById("auth-error").classList.add("hidden");
+                document.getElementById("auth-toggle-link").innerText = "Already have an account? Login";
+            }
+
+            function showLoginModal() {
+                document.getElementById("auth-modal").classList.remove("hidden");
+                document.getElementById("auth-title").innerText = "Login";
+                document.getElementById("auth-subtitle").innerText = "Log in to manage your site analytics.";
+                document.getElementById("auth-submit-btn").innerText = "Login";
+                document.getElementById("auth-username").value = "";
+                document.getElementById("auth-password").value = "";
+                document.getElementById("auth-error").classList.add("hidden");
+                document.getElementById("auth-toggle-link").innerText = "Don't have an account? Register";
+            }
+
+            async function submitAuth() {
+                const username = document.getElementById("auth-username").value.trim();
+                const password = document.getElementById("auth-password").value;
+                const errorDiv = document.getElementById("auth-error");
+
+                if (!username || !password) {
+                    errorDiv.innerText = "Please fill in all fields.";
+                    errorDiv.classList.remove("hidden");
+                    return;
                 }
 
-                await fetchProperties();
-                await loadTokens();
+                errorDiv.classList.add("hidden");
+                const endpoint = isRegistrationRequired ? "/api/auth/register" : "/api/auth/login";
+
+                try {
+                    const res = await fetch(getApiUrl(endpoint), {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ username, password })
+                    });
+                    const data = await res.json();
+
+                    if (!res.ok) {
+                        throw new Error(data.detail || "Authentication failed.");
+                    }
+
+                    if (isRegistrationRequired) {
+                        log("[AUTH] Admin account registered successfully.");
+                        isRegistrationRequired = false;
+                        showLoginModal();
+                    } else {
+                        log("[AUTH] Logged in successfully.");
+                        localStorage.setItem("analytics_session_token", data.token);
+                        setSessionToken(data.token);
+                        document.getElementById("auth-modal").classList.add("hidden");
+                        await loadSites();
+                        await loadTokens();
+                    }
+                } catch (err) {
+                    errorDiv.innerText = err.message;
+                    errorDiv.classList.remove("hidden");
+                }
+            }
+
+            function setSessionToken(token) {
+                const logoutBtn = document.getElementById("logout-btn");
+                if (logoutBtn) {
+                    if (token) {
+                        logoutBtn.classList.remove("hidden");
+                    } else {
+                        logoutBtn.classList.add("hidden");
+                    }
+                }
+            }
+
+            async function logout() {
+                if (refreshInterval) {
+                    clearInterval(refreshInterval);
+                    refreshInterval = null;
+                }
+                const token = localStorage.getItem("analytics_session_token");
+                if (token) {
+                    try {
+                        await fetch(getApiUrl("/api/auth/logout"), {
+                            method: "POST",
+                            headers: { "Authorization": `Bearer ${token}` }
+                        });
+                    } catch (err) {
+                        console.error("Logout request failed:", err);
+                    }
+                }
+                localStorage.removeItem("analytics_session_token");
+                setSessionToken(null);
+                log("[AUTH] Logged out.");
+                showLoginModal();
+            }
+
+            async function init() {
+                await checkAuthStatus();
             }
 
             init();
         </script>
+
     </body>
 </html>

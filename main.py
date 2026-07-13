@@ -9,15 +9,13 @@ from config import (
     CH_PASSWORD,
     CH_PORT,
     CH_USER,
-    ANALYTICS_API_TOKEN,
-    ANALYTICS_INGEST_TOKEN,
-    DEFAULT_SITE_ID,
 )
-from routers import pages, analytics, tokens
+from routers import pages, analytics, tokens, auth
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+
     ch_client = clickhouse_connect.get_client(
         host=CH_HOST,
         port=CH_PORT,
@@ -41,34 +39,6 @@ async def lifespan(app: FastAPI):
             ) ENGINE = MergeTree()
             ORDER BY (site_id, event_type, event_time, user_id);
         """)
-        ch_client.command("""
-            CREATE TABLE IF NOT EXISTS api_tokens (
-                token String,
-                site_id String,
-                scope Enum8('ingest' = 1, 'read' = 2, 'admin' = 3),
-                created_at DateTime DEFAULT now()
-            ) ENGINE = MergeTree()
-            ORDER BY (token);
-        """)
-        from datetime import datetime
-
-        now = datetime.now()
-        tokens = [
-            (ANALYTICS_INGEST_TOKEN, DEFAULT_SITE_ID, "ingest", now),
-            (ANALYTICS_API_TOKEN, DEFAULT_SITE_ID, "admin", now),
-        ]
-        for token, site_id, scope, ts in tokens:
-            if token:
-                exists = ch_client.query(
-                    "SELECT 1 FROM api_tokens WHERE token = %(token)s LIMIT 1",
-                    {"token": token},
-                ).result_rows
-                if not exists:
-                    ch_client.insert(
-                        "api_tokens",
-                        data=[(token, site_id, scope, ts)],
-                        column_names=["token", "site_id", "scope", "created_at"],
-                    )
     except Exception:
         pass
     finally:
@@ -91,3 +61,4 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 app.include_router(pages.router)
 app.include_router(analytics.router)
 app.include_router(tokens.router)
+app.include_router(auth.router)
