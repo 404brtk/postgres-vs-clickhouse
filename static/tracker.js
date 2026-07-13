@@ -4,12 +4,6 @@
 
     const currentScript =
         document.getElementById("tracker-script") || document.currentScript;
-    let trackerToken = currentScript
-        ? currentScript.getAttribute("data-token") || ""
-        : "";
-    if (!trackerToken && typeof window !== "undefined" && window.localStorage) {
-        trackerToken = window.localStorage.getItem("tracker_demo_token") || "";
-    }
     let trackerEndpoint = currentScript
         ? currentScript.getAttribute("data-endpoint") || "/api/analytics/ingest"
         : "/api/analytics/ingest";
@@ -18,16 +12,8 @@
         trackerEndpoint = url;
     };
 
-    window.setTrackerToken = function (token) {
-        trackerToken = token;
-    };
-
     function getRequestHeaders() {
-        const headers = { "Content-Type": "application/json" };
-        if (trackerToken) {
-            headers["Authorization"] = `Bearer ${trackerToken}`;
-        }
-        return headers;
+        return { "Content-Type": "application/json" };
     }
 
     let entryTime = performance.now();

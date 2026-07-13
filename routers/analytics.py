@@ -1,14 +1,12 @@
 import time
 import random
 from datetime import datetime
-from typing import Annotated, Union
+from typing import Union
 from fastapi import APIRouter, Depends, HTTPException, Request
-from sqlalchemy.orm import Session
 from config import generate_user_hash
 from database import execute_sql, get_ch_client
 from models import GenericEvent, QuerySpec
-from auth import TokenContext, require_scope
-from database_pg import get_db, APIToken
+from auth import verify_api_key
 
 router = APIRouter()
 
@@ -17,7 +15,6 @@ def resolve_field(field_name: str, for_numeric_aggregation: bool = False) -> str
     standard_cols = {
         "event_id",
         "user_id",
-        "site_id",
         "event_type",
         "event_time",
         "device",
@@ -40,33 +37,10 @@ def resolve_field(field_name: str, for_numeric_aggregation: bool = False) -> str
     raise ValueError(f"Invalid field name: {field_name}")
 
 
-def check_site_access(site_id: str, ctx: TokenContext, db: Session):
-    if ctx.scope == "admin":
-        if ctx.user_id is not None:
-            exists = (
-                db.query(APIToken)
-                .filter(APIToken.user_id == ctx.user_id, APIToken.site_id == site_id)
-                .first()
-            )
-            if not exists:
-                raise HTTPException(
-                    status_code=403,
-                    detail="You do not have access to this site ID.",
-                )
-    else:
-        if ctx.site_id != site_id:
-            raise HTTPException(
-                status_code=403,
-                detail="Token is not authorized for this site ID.",
-            )
-
-
 @router.post("/api/analytics/ingest")
 def create_events(
     payload: Union[GenericEvent, list[GenericEvent]],
     request: Request,
-    ctx: Annotated[TokenContext, Depends(require_scope("ingest", "admin"))],
-    db: Session = Depends(get_db),
 ):
     events = [payload] if isinstance(payload, GenericEvent) else payload
 
@@ -81,21 +55,11 @@ def create_events(
 
         extra = ev.model_extra or {}
         custom_user_id = extra.pop("user_id", None)
-        custom_site_id = extra.pop("site_id", None)
 
         try:
-            ev_user_id = (
-                int(custom_user_id) if custom_user_id is not None else user_id
-            )
+            ev_user_id = int(custom_user_id) if custom_user_id is not None else user_id
         except Exception:
             ev_user_id = user_id
-
-        target_site_id = (
-            custom_site_id
-            if (ctx.scope == "admin" and custom_site_id)
-            else ctx.site_id
-        )
-        check_site_access(target_site_id, ctx, db)
 
         properties = {k: str(v) for k, v in extra.items()}
 
@@ -103,7 +67,6 @@ def create_events(
             (
                 event_id,
                 ev_user_id,
-                target_site_id,
                 ev.event_type,
                 event_time,
                 ev.device or "desktop",
@@ -123,7 +86,6 @@ def create_events(
             column_names=[
                 "event_id",
                 "user_id",
-                "site_id",
                 "event_type",
                 "event_time",
                 "device",
@@ -150,17 +112,11 @@ def create_events(
 
 @router.post("/api/analytics/clear")
 def clear_analytics_data(
-    ctx: Annotated[TokenContext, Depends(require_scope("admin"))],
-    site_id: str = "default",
-    db: Session = Depends(get_db),
+    _=Depends(verify_api_key),
 ):
-    check_site_access(site_id, ctx, db)
     try:
         ch_client = get_ch_client()
-        ch_client.command(
-            "ALTER TABLE events DELETE WHERE site_id = %(site_id)s",
-            {"site_id": site_id},
-        )
+        ch_client.command("TRUNCATE TABLE events")
         ch_client.close()
     except Exception as e:
         raise HTTPException(
@@ -168,11 +124,11 @@ def clear_analytics_data(
         )
     return {
         "status": "success",
-        "message": f"All events cleared for site '{site_id}'.",
+        "message": "All events cleared from database.",
     }
 
 
-def compile_sql_query(spec: QuerySpec, site_id: str) -> tuple[str, dict]:
+def compile_sql_query(spec: QuerySpec) -> tuple[str, dict]:
     if not spec.metrics and not spec.group_by:
         raise ValueError("At least one metric or group-by column must be specified.")
 
@@ -205,8 +161,8 @@ def compile_sql_query(spec: QuerySpec, site_id: str) -> tuple[str, dict]:
             elif m.type == "max":
                 select_parts.append(f"max({resolved_field}) AS {alias_escaped}")
 
-    where_parts = ["site_id = %(site_id)s"]
-    params = {"site_id": site_id}
+    where_parts = []
+    params = {}
 
     if spec.start_date:
         where_parts.append("event_time >= %(start_date)s")
@@ -246,18 +202,16 @@ def compile_sql_query(spec: QuerySpec, site_id: str) -> tuple[str, dict]:
                 params[param_name] = f.value
 
     select_clause = ", ".join(select_parts)
-    where_clause = " AND ".join(where_parts)
-    group_clause = (
-        f"GROUP BY {', '.join(group_by_cols)}" if group_by_cols else ""
-    )
+    where_clause = f"WHERE {' AND '.join(where_parts)}" if where_parts else ""
+    group_clause = f"GROUP BY {', '.join(group_by_cols)}" if group_by_cols else ""
     limit_clause = f"LIMIT {spec.limit}" if spec.limit else ""
 
     query_sql = f"""
         SELECT {select_clause}
         FROM events
-        WHERE {where_clause}
+        {where_clause}
         {group_clause}
-        ORDER BY {group_by_cols[0] if group_by_cols else '1'} ASC
+        ORDER BY {group_by_cols[0] if group_by_cols else "1"} ASC
         {limit_clause}
     """
     return query_sql, params
@@ -266,13 +220,10 @@ def compile_sql_query(spec: QuerySpec, site_id: str) -> tuple[str, dict]:
 @router.post("/api/analytics/query")
 def query_analytics_events(
     spec: QuerySpec,
-    ctx: Annotated[TokenContext, Depends(require_scope("read", "admin"))],
-    site_id: str = "default",
-    db: Session = Depends(get_db),
+    _=Depends(verify_api_key),
 ):
-    check_site_access(site_id, ctx, db)
     try:
-        sql, params = compile_sql_query(spec, site_id)
+        sql, params = compile_sql_query(spec)
         results = execute_sql(sql, params)
         return results
     except ValueError as e:
@@ -283,17 +234,13 @@ def query_analytics_events(
 
 @router.get("/api/analytics/properties")
 def get_available_properties(
-    ctx: Annotated[TokenContext, Depends(require_scope("read", "admin"))],
-    site_id: str = "default",
-    db: Session = Depends(get_db),
+    _=Depends(verify_api_key),
 ):
-    check_site_access(site_id, ctx, db)
     keys = set()
     try:
         ch_client = get_ch_client()
         res = ch_client.query(
-            "SELECT DISTINCT arrayJoin(mapKeys(properties)) AS key FROM events WHERE site_id = %(site_id)s",
-            {"site_id": site_id},
+            "SELECT DISTINCT arrayJoin(mapKeys(properties)) AS key FROM events"
         )
         for row in res.result_rows:
             keys.add(row[0])
@@ -305,16 +252,13 @@ def get_available_properties(
 
 @router.get("/api/analytics/overview")
 def get_analytics_overview(
-    ctx: Annotated[TokenContext, Depends(require_scope("read", "admin"))],
-    site_id: str = "default",
     start_date: datetime | None = None,
     end_date: datetime | None = None,
-    db: Session = Depends(get_db),
+    _=Depends(verify_api_key),
 ):
-    check_site_access(site_id, ctx, db)
     try:
-        where_parts = ["site_id = %(site_id)s"]
-        params: dict = {"site_id": site_id}
+        where_parts = []
+        params: dict = {}
 
         if start_date:
             where_parts.append("event_time >= %(start_date)s")
@@ -324,7 +268,7 @@ def get_analytics_overview(
             where_parts.append("event_time <= %(end_date)s")
             params["end_date"] = end_date
 
-        where_clause = f"WHERE {' AND '.join(where_parts)}"
+        where_clause = f"WHERE {' AND '.join(where_parts)}" if where_parts else ""
 
         q_summary = f"""
             SELECT 

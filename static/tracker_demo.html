@@ -22,11 +22,6 @@
                     >Analytics Console</a
                 >
             </header>
- 
-            <div class="fieldset token-input-fieldset">
-                <span class="guide-text guide-text-small">Tracker Ingestion Token:</span>
-                <input type="text" id="tracker-token-input" placeholder="Paste your generated token here..." />
-            </div>
 
             <div class="actions">
                 <button data-event="view" data-target="19896" data-category="9">
@@ -66,35 +61,6 @@
         </div>
 
         <script>
-            const tokenInput = document.getElementById("tracker-token-input");
-            if (tokenInput) {
-                const savedToken = localStorage.getItem("tracker_demo_token");
-                if (savedToken) {
-                    tokenInput.value = savedToken;
-                }
-
-                function updateTrackerToken(token) {
-                    if (window.setTrackerToken) {
-                        window.setTrackerToken(token);
-                    } else {
-                        document.addEventListener("DOMContentLoaded", () => {
-                            if (window.setTrackerToken) {
-                                window.setTrackerToken(token);
-                            }
-                        });
-                    }
-                }
-
-                if (savedToken) {
-                    updateTrackerToken(savedToken);
-                }
-
-                tokenInput.addEventListener("input", (e) => {
-                    const val = e.target.value.trim();
-                    localStorage.setItem("tracker_demo_token", val);
-                    updateTrackerToken(val);
-                });
-            }
             window.addEventListener("tracker:track", (e) => {
                 const ev = e.detail.event;
                 const standardKeys = [

@@ -13,16 +13,15 @@
                 <h1>Analytics Console</h1>
                 <div class="nav-links">
                     <div class="site-selector-container">
-                        <span class="guide-text site-selector-label">Active Site:</span>
-                        <select id="active-site-select" onchange="onSiteSelectChange()"></select>
+                        <span class="guide-text site-selector-label">API Key:</span>
+                        <input type="password" id="active-api-key" placeholder="Enter key..." />
                     </div>
                     <a href="/demo" class="nav-link">Live Tracker Demo</a>
-                    <button id="logout-btn" onclick="logout()" class="hidden">Logout</button>
                 </div>
             </header>
 
             <div
-                class="section overview-results-section hidden"
+                class="section overview-results-section"
                 id="overview-results"
             >
                 <h2>Dashboard Overview</h2>
@@ -247,116 +246,46 @@
                 </div>
             </div>
 
-            <div class="card token-mgmt-card">
-                <h2>Token Management</h2>
-                <div class="token-mgmt-row">
-                    <div class="form-group">
-                        <label>Site ID</label>
-                        <input type="text" id="token-site-id" value="default" />
-                    </div>
-                    <div class="form-group">
-                        <label>Scope</label>
-                        <select id="token-scope">
-                            <option value="ingest">ingest</option>
-                            <option value="read">read</option>
-                            <option value="admin">admin</option>
-                        </select>
-                    </div>
-                    <div class="token-mgmt-btn-group">
-                        <span class="token-mgmt-btn-spacer">.</span>
-                        <button onclick="createToken()" class="token-mgmt-btn">
-                            Generate Token
-                        </button>
-                    </div>
-                    <div class="token-mgmt-btn-group">
-                        <span class="token-mgmt-btn-spacer">.</span>
-                        <button onclick="loadTokens()" class="token-mgmt-btn">
-                            Refresh List
-                        </button>
-                    </div>
-                </div>
-                <div id="token-created" class="hidden token-created-box"></div>
-                <table id="token-table" class="token-table">
-                    <thead>
-                        <tr>
-                            <th>Token</th>
-                            <th>Site ID</th>
-                            <th>Scope</th>
-                            <th>Created</th>
-                            <th></th>
-                        </tr>
-                    </thead>
-                    <tbody id="token-table-body"></tbody>
-                </table>
-            </div>
-
             <div class="terminal" id="terminal">
                 <div class="terminal-init-message">
                     [SYSTEM] Analytics Console initialized. Run ingestion or
                     queries above.
                 </div>
             </div>
-        <div id="auth-modal" class="modal-overlay hidden">
-            <div class="modal-card">
-                <h2 id="auth-title" class="auth-title">Login</h2>
-                <p id="auth-subtitle" class="guide-text">Please log in to manage your console.</p>
-                <form onsubmit="event.preventDefault(); submitAuth();">
-                    <div class="form-group auth-form-group-10">
-                        <label class="auth-label">Username</label>
-                        <input type="text" id="auth-username" placeholder="admin" />
-                    </div>
-                    <div class="form-group auth-form-group-15">
-                        <label class="auth-label">Password</label>
-                        <input type="password" id="auth-password" placeholder="••••••••" />
-                    </div>
-                    <button type="submit" id="auth-submit-btn">
-                        Login
-                    </button>
-                </form>
-                <div id="auth-error" class="hidden"></div>
-                <p id="auth-toggle-link" onclick="toggleAuthMode()">
-                    Don't have an account? Register
-                </p>
-            </div>
-        </div>
 
         <script>
             function getRequestHeaders(extraHeaders = {}) {
                 const headers = { ...extraHeaders };
-                const token = localStorage.getItem("analytics_session_token") || "";
-                if (token) {
-                    headers["Authorization"] = `Bearer ${token}`;
+                const key = document.getElementById("active-api-key")?.value || localStorage.getItem("analytics_api_key") || "";
+                if (key) {
+                    headers["Authorization"] = `Bearer ${key}`;
                 }
                 return headers;
             }
 
             function isAuthError(res) {
                 if (res.status === 401) {
-                    log("[AUTH] Invalid or missing API token.", true);
-                    showLoginModal();
+                    log("[AUTH] Invalid or missing API key.", true);
                     return true;
                 }
                 return false;
             }
 
-            let activeSiteId = "default";
             let refreshInterval = null;
             let availableProperties = [];
 
             function startLiveRefresh() {
                 if (refreshInterval) clearInterval(refreshInterval);
                 refreshInterval = setInterval(async () => {
-                    if (activeSiteId) {
-                        await fetchProperties();
-                        await loadOverview();
-                    }
+                    await fetchProperties();
+                    await loadOverview();
                 }, 10000);
             }
 
             async function fetchProperties() {
                 try {
                     const res = await fetch(
-                        getApiUrl(`/api/analytics/properties?site_id=${activeSiteId}`),
+                        getApiUrl("/api/analytics/properties"),
                         { headers: getRequestHeaders() },
                     );
                     if (isAuthError(res)) return;
@@ -523,10 +452,6 @@
             }
 
             async function sendEvent() {
-                if (!activeSiteId) {
-                    log("[ERROR] No active site selected. Please generate a token in the Token Management panel below to create your first site.", true);
-                    return;
-                }
                 const eventType = document.getElementById("ingest-type").value;
                 const device = document.getElementById("ingest-device").value;
                 const pathname = document.getElementById("ingest-path").value;
@@ -536,7 +461,6 @@
                     document.getElementById("ingest-duration").value;
 
                 const payload = {
-                    site_id: activeSiteId,
                     event_type: eventType,
                     device: device,
                     pathname: pathname,
@@ -565,9 +489,9 @@
                         getApiUrl("/api/analytics/ingest"),
                         {
                             method: "POST",
-                            headers: getRequestHeaders({
+                            headers: {
                                 "Content-Type": "application/json",
-                            }),
+                            },
                             body: JSON.stringify(payload),
                         },
                     );
@@ -712,7 +636,7 @@
                 log(`[SYSTEM] Executing query on ClickHouse...`);
 
                 try {
-                    const res = await fetch(getApiUrl(`/api/analytics/query?site_id=${activeSiteId}`), {
+                    const res = await fetch(getApiUrl("/api/analytics/query"), {
                         method: "POST",
                         headers: getRequestHeaders({
                             "Content-Type": "application/json",
@@ -738,7 +662,7 @@
 
                 try {
                     const res = await fetch(
-                        getApiUrl(`/api/analytics/overview?site_id=${activeSiteId}`),
+                        getApiUrl("/api/analytics/overview"),
                         { headers: getRequestHeaders() },
                     );
                     if (isAuthError(res)) return;
@@ -825,7 +749,7 @@
                     "[SYSTEM] Purging generic analytics events from databases...",
                 );
                 try {
-                    const res = await fetch(getApiUrl(`/api/analytics/clear?site_id=${activeSiteId}`), {
+                    const res = await fetch(getApiUrl("/api/analytics/clear"), {
                         method: "POST",
                         headers: getRequestHeaders(),
                     });
@@ -833,299 +757,31 @@
                     const data = await res.json();
                     log(`[INGEST] ${data.message}`);
 
-                    document
-                        .getElementById("overview-results")
-                        .classList.add("hidden");
-
+                    await loadOverview();
                     await fetchProperties();
                 } catch (err) {
                     log(`[ERROR] Failed to clear data: ${err.message}`, true);
                 }
             }
 
-            async function createToken() {
-                const siteId = document.getElementById("token-site-id").value.trim();
-                const scope = document.getElementById("token-scope").value;
-                if (!siteId) {
-                    log("[ERROR] Site ID is required.", true);
-                    return;
-                }
-                try {
-                    const res = await fetch(getApiUrl("/api/tokens"), {
-                        method: "POST",
-                        headers: getRequestHeaders({
-                            "Content-Type": "application/json",
-                        }),
-                        body: JSON.stringify({ site_id: siteId, scope }),
+            async function init() {
+                const keyInput = document.getElementById("active-api-key");
+                if (keyInput) {
+                    const savedKey = localStorage.getItem("analytics_api_key");
+                    if (savedKey) {
+                        keyInput.value = savedKey;
+                    }
+                    keyInput.addEventListener("input", (e) => {
+                        const val = e.target.value.trim();
+                        localStorage.setItem("analytics_api_key", val);
+                        fetchProperties();
+                        loadOverview();
+                        startLiveRefresh();
                     });
-                    if (isAuthError(res)) return;
-                    const data = await res.json();
-                    if (!res.ok) {
-                        throw new Error(data.detail || "Failed to create token");
-                    }
-                    const createdDiv = document.getElementById("token-created");
-                    createdDiv.textContent = `New token: ${data.token}`;
-                    createdDiv.classList.remove("hidden");
-                    log(`[TOKEN] Created ${scope} token for site "${siteId}"`);
-                    await loadSites(siteId);
-                    await loadTokens();
-                } catch (err) {
-                    log(`[ERROR] ${err.message}`, true);
-                }
-            }
-
-            async function loadTokens() {
-                try {
-                    const res = await fetch(getApiUrl("/api/tokens"), {
-                        headers: getRequestHeaders(),
-                    });
-                    if (isAuthError(res)) return;
-                    const data = await res.json();
-                    if (!res.ok) {
-                        throw new Error(data.detail || "Failed to load tokens");
-                    }
-                    const tbody = document.getElementById("token-table-body");
-                    tbody.innerHTML = "";
-                    data.forEach((t) => {
-                        const displayToken =
-                            t.token.length > 20
-                                ? t.token.slice(0, 8) + "..." + t.token.slice(-8)
-                                : t.token;
-                        tbody.innerHTML += `
-                        <tr>
-                            <td class="token-cell" title="${t.token}">${displayToken}</td>
-                            <td>${t.site_id}</td>
-                            <td>${t.scope}</td>
-                            <td>${t.created_at}</td>
-                            <td><button onclick="revokeToken('${t.token}')" class="revoke-btn">Revoke</button></td>
-                        </tr>`;
-                    });
-                } catch (err) {
-                    log(`[ERROR] ${err.message}`, true);
-                }
-            }
-
-            async function revokeToken(token) {
-                if (!confirm("Revoke this token? This cannot be undone.")) return;
-                try {
-                    const res = await fetch(getApiUrl(`/api/tokens/${token}`), {
-                        method: "DELETE",
-                        headers: getRequestHeaders(),
-                    });
-                    if (isAuthError(res)) return;
-                    const data = await res.json();
-                    if (!res.ok) {
-                        throw new Error(data.detail || "Failed to revoke token");
-                    }
-                    log(`[TOKEN] Token revoked.`);
-                    await loadTokens();
-                } catch (err) {
-                    log(`[ERROR] ${err.message}`, true);
-                }
-            }
-
-            async function loadSites(selectedSiteId = null) {
-                try {
-                    const res = await fetch(getApiUrl("/api/sites"), { headers: getRequestHeaders() });
-                    if (isAuthError(res)) return;
-                    const sites = await res.json();
-                    
-                    const selectEl = document.getElementById("active-site-select");
-                    if (!selectEl) return;
-                    
-                    if (sites.length === 0) {
-                        activeSiteId = "";
-                        localStorage.removeItem("active_site_id");
-                        selectEl.innerHTML = "<option value=''>No sites registered</option>";
-                        const tokenSiteIdInput = document.getElementById("token-site-id");
-                        if (tokenSiteIdInput) {
-                            tokenSiteIdInput.value = "";
-                        }
-                        document.getElementById("overview-results").classList.add("hidden");
-                        log("[SYSTEM] No sites registered. Generate a token below to get started.");
-                        return;
-                    }
-                    
-                    selectEl.innerHTML = "";
-                    sites.forEach(site => {
-                        const opt = document.createElement("option");
-                        opt.value = site;
-                        opt.innerText = site;
-                        selectEl.appendChild(opt);
-                    });
-                    
-                    let targetSite = selectedSiteId || localStorage.getItem("active_site_id");
-                    if (targetSite && sites.includes(targetSite)) {
-                        activeSiteId = targetSite;
-                    } else if (!sites.includes(activeSiteId)) {
-                        activeSiteId = sites[0];
-                    }
-                    localStorage.setItem("active_site_id", activeSiteId);
-                    selectEl.value = activeSiteId;
-                    
-                    const tokenSiteIdInput = document.getElementById("token-site-id");
-                    if (tokenSiteIdInput) {
-                        tokenSiteIdInput.value = activeSiteId;
-                    }
-                    
-                    await fetchProperties();
-                    await loadOverview();
-                    startLiveRefresh();
-                } catch (err) {
-                    console.error("Failed to load sites:", err);
-                }
-            }
-
-            async function onSiteSelectChange() {
-                const selectEl = document.getElementById("active-site-select");
-                const val = selectEl.value;
-                if (!val) return;
-                
-                activeSiteId = val;
-                localStorage.setItem("active_site_id", activeSiteId);
-                const tokenSiteIdInput = document.getElementById("token-site-id");
-                if (tokenSiteIdInput) {
-                    tokenSiteIdInput.value = activeSiteId;
                 }
                 await fetchProperties();
                 await loadOverview();
-                await loadTokens();
                 startLiveRefresh();
-            }
-
-            async function checkAuthStatus() {
-                try {
-                    const res = await fetch(getApiUrl("/api/auth/status"));
-                    const data = await res.json();
-                    isRegistrationRequired = data.registration_required;
-
-                    if (isRegistrationRequired) {
-                        showRegisterModal();
-                    } else {
-                        const savedToken = localStorage.getItem("analytics_session_token");
-                        if (savedToken) {
-                            setSessionToken(savedToken);
-                            await loadSites();
-                            await loadTokens();
-                        } else {
-                            showLoginModal();
-                        }
-                    }
-                } catch (err) {
-                    console.error("Auth status check failed:", err);
-                }
-            }
-
-            function toggleAuthMode() {
-                isRegistrationRequired = !isRegistrationRequired;
-                if (isRegistrationRequired) {
-                    showRegisterModal();
-                } else {
-                    showLoginModal();
-                }
-            }
-
-            function showRegisterModal() {
-                document.getElementById("auth-modal").classList.remove("hidden");
-                document.getElementById("auth-title").innerText = "Create Account";
-                document.getElementById("auth-subtitle").innerText = "Configure your administrator credentials.";
-                document.getElementById("auth-submit-btn").innerText = "Register";
-                document.getElementById("auth-username").value = "";
-                document.getElementById("auth-password").value = "";
-                document.getElementById("auth-error").classList.add("hidden");
-                document.getElementById("auth-toggle-link").innerText = "Already have an account? Login";
-            }
-
-            function showLoginModal() {
-                document.getElementById("auth-modal").classList.remove("hidden");
-                document.getElementById("auth-title").innerText = "Login";
-                document.getElementById("auth-subtitle").innerText = "Log in to manage your site analytics.";
-                document.getElementById("auth-submit-btn").innerText = "Login";
-                document.getElementById("auth-username").value = "";
-                document.getElementById("auth-password").value = "";
-                document.getElementById("auth-error").classList.add("hidden");
-                document.getElementById("auth-toggle-link").innerText = "Don't have an account? Register";
-            }
-
-            async function submitAuth() {
-                const username = document.getElementById("auth-username").value.trim();
-                const password = document.getElementById("auth-password").value;
-                const errorDiv = document.getElementById("auth-error");
-
-                if (!username || !password) {
-                    errorDiv.innerText = "Please fill in all fields.";
-                    errorDiv.classList.remove("hidden");
-                    return;
-                }
-
-                errorDiv.classList.add("hidden");
-                const endpoint = isRegistrationRequired ? "/api/auth/register" : "/api/auth/login";
-
-                try {
-                    const res = await fetch(getApiUrl(endpoint), {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ username, password })
-                    });
-                    const data = await res.json();
-
-                    if (!res.ok) {
-                        throw new Error(data.detail || "Authentication failed.");
-                    }
-
-                    if (isRegistrationRequired) {
-                        log("[AUTH] Admin account registered successfully.");
-                        isRegistrationRequired = false;
-                        showLoginModal();
-                    } else {
-                        log("[AUTH] Logged in successfully.");
-                        localStorage.setItem("analytics_session_token", data.token);
-                        setSessionToken(data.token);
-                        document.getElementById("auth-modal").classList.add("hidden");
-                        await loadSites();
-                        await loadTokens();
-                    }
-                } catch (err) {
-                    errorDiv.innerText = err.message;
-                    errorDiv.classList.remove("hidden");
-                }
-            }
-
-            function setSessionToken(token) {
-                const logoutBtn = document.getElementById("logout-btn");
-                if (logoutBtn) {
-                    if (token) {
-                        logoutBtn.classList.remove("hidden");
-                    } else {
-                        logoutBtn.classList.add("hidden");
-                    }
-                }
-            }
-
-            async function logout() {
-                if (refreshInterval) {
-                    clearInterval(refreshInterval);
-                    refreshInterval = null;
-                }
-                const token = localStorage.getItem("analytics_session_token");
-                if (token) {
-                    try {
-                        await fetch(getApiUrl("/api/auth/logout"), {
-                            method: "POST",
-                            headers: { "Authorization": `Bearer ${token}` }
-                        });
-                    } catch (err) {
-                        console.error("Logout request failed:", err);
-                    }
-                }
-                localStorage.removeItem("analytics_session_token");
-                setSessionToken(null);
-                log("[AUTH] Logged out.");
-                showLoginModal();
-            }
-
-            async function init() {
-                await checkAuthStatus();
             }
 
             init();

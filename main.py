@@ -1,8 +1,8 @@
+import clickhouse_connect
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-import clickhouse_connect
 from config import (
     CH_DB,
     CH_HOST,
@@ -10,12 +10,11 @@ from config import (
     CH_PORT,
     CH_USER,
 )
-from routers import pages, analytics, tokens, auth
+from routers import pages, analytics
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-
     ch_client = clickhouse_connect.get_client(
         host=CH_HOST,
         port=CH_PORT,
@@ -28,7 +27,6 @@ async def lifespan(app: FastAPI):
             CREATE TABLE IF NOT EXISTS events (
                 event_id Int64,
                 user_id Int32,
-                site_id String,
                 event_type LowCardinality(String),
                 event_time DateTime,
                 device LowCardinality(String),
@@ -37,7 +35,7 @@ async def lifespan(app: FastAPI):
                 duration_sec Int32 DEFAULT 0,
                 properties Map(String, String)
             ) ENGINE = MergeTree()
-            ORDER BY (site_id, event_type, event_time, user_id);
+            ORDER BY (event_type, event_time, user_id);
         """)
     except Exception:
         pass
@@ -60,5 +58,3 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 
 app.include_router(pages.router)
 app.include_router(analytics.router)
-app.include_router(tokens.router)
-app.include_router(auth.router)
