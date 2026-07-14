@@ -24,11 +24,15 @@ jobs:
     services:
       clickhouse:
         image: clickhouse/clickhouse-server:latest
+        env:
+          CLICKHOUSE_USER: default
+          CLICKHOUSE_PASSWORD: clickhouse_password
+          CLICKHOUSE_DB: default
         ports:
           - 8123:8123
           - 9000:9000
         options: >-
-          --health-cmd "clickhouse-client --query 'SELECT 1'"
+          --health-cmd "clickhouse-client --password clickhouse_password --query 'SELECT 1'"
           --health-interval 3s
           --health-timeout 3s
           --health-retries 10
