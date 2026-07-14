@@ -271,7 +271,7 @@ def get_analytics_overview(
         where_clause = f"WHERE {' AND '.join(where_parts)}" if where_parts else ""
 
         q_summary = f"""
-            SELECT 
+            SELECT
                 countIf(event_type = 'pageview') AS total_views,
                 uniq(user_id) AS unique_visitors,
                 COUNT(*) AS total_events,
