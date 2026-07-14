@@ -1,4 +1,5 @@
 import clickhouse_connect
+import logging
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -25,8 +26,8 @@ async def lifespan(app: FastAPI):
     )
     try:
         init_db(ch_client)
-    except Exception:
-        pass
+    except Exception as e:
+        logging.error(f"ClickHouse initialization failed: {e}")
     finally:
         ch_client.close()
     yield
