@@ -1,50 +1,56 @@
 on:
-  push:
-    branches: [ main ]
-  pull_request:
-    branches: [ main ]
+    push:
+        branches: [main]
+    pull_request:
+        branches: [main]
 
 jobs:
-  lint:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
+    lint-and-test:
+        runs-on: ubuntu-latest
 
-      - uses: astral-sh/setup-uv@v5
-        with:
-          python-version: "3.13"
+        services:
+            clickhouse:
+                image: clickhouse/clickhouse-server:latest
+                env:
+                    CLICKHOUSE_USER: default
+                    CLICKHOUSE_PASSWORD: clickhouse_password
+                    CLICKHOUSE_DB: default
+                ports:
+                    - 8123:8123
+                    - 9000:9000
+                options: >-
+                    --health-cmd "clickhouse-client --password clickhouse_password --query 'SELECT 1'"
+                    --health-interval 3s
+                    --health-timeout 3s
+                    --health-retries 10
 
-      - run: |
-          uv run ruff check .
-          uv run ruff format --check .
+        steps:
+            - uses: actions/checkout@v7
 
-  test:
-    runs-on: ubuntu-latest
+            - uses: astral-sh/setup-uv@v8.3.2
+              with:
+                  python-version: "3.13"
+                  enable-cache: true
 
-    services:
-      clickhouse:
-        image: clickhouse/clickhouse-server:latest
-        env:
-          CLICKHOUSE_USER: default
-          CLICKHOUSE_PASSWORD: clickhouse_password
-          CLICKHOUSE_DB: default
-        ports:
-          - 8123:8123
-          - 9000:9000
-        options: >-
-          --health-cmd "clickhouse-client --password clickhouse_password --query 'SELECT 1'"
-          --health-interval 3s
-          --health-timeout 3s
-          --health-retries 10
+            - run: uv sync
 
-    steps:
-      - uses: actions/checkout@v4
+            - name: Run linter and formatter
+              run: |
+                  uv run ruff check .
+                  uv run ruff format --check .
 
-      - uses: astral-sh/setup-uv@v5
-        with:
-          python-version: "3.13"
-          enable-cache: true
+            - name: Run tests
+              run: uv run pytest -v --tb=short
 
-      - run: uv sync
+    security:
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v7
 
-      - run: uv run pytest -v --tb=short
+            - name: Run Trivy vulnerability scanner
+              uses: aquasecurity/trivy-action@master
+              with:
+                  scan-type: "fs"
+                  scan-ref: "."
+                  exit-code: "1"
+                  severity: "HIGH,CRITICAL"
