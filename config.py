@@ -15,7 +15,7 @@ CH_DB = os.environ.get("CLICKHOUSE_DB", "default")
 ANALYTICS_API_KEY = os.environ.get("ANALYTICS_API_KEY", "demo-api-key")
 AUTH_DISABLED = os.environ.get("AUTH_DISABLED", "").lower() in ("1", "true", "yes")
 
-SECRET_KEY_FILE = ".secret_key"
+SECRET_KEY_FILE = ".secret_key"  # noqa: S105
 try:
     if os.path.exists(SECRET_KEY_FILE):
         with open(SECRET_KEY_FILE, "r") as f:

@@ -1,5 +1,6 @@
 import time
-import random
+import secrets
+import logging
 from datetime import datetime
 from typing import Union
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -50,7 +51,7 @@ def create_events(
 
     prepared_rows = []
     for ev in events:
-        event_id = random.randint(1000000000, 9999999999)
+        event_id = secrets.randbelow(9000000000) + 1000000000
         event_time = datetime.now()
 
         extra = ev.model_extra or {}
@@ -245,8 +246,8 @@ def get_available_properties(
         for row in res.result_rows:
             keys.add(row[0])
         ch_client.close()
-    except Exception:
-        pass
+    except Exception as e:
+        logging.error(f"Failed to fetch available properties: {e}")
     return sorted(list(keys))
 
 
