@@ -1,0 +1,46 @@
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.13"
+
+      - run: |
+          uv run ruff check .
+          uv run ruff format --check .
+
+  test:
+    runs-on: ubuntu-latest
+
+    services:
+      clickhouse:
+        image: clickhouse/clickhouse-server:latest
+        ports:
+          - 8123:8123
+          - 9000:9000
+        options: >-
+          --health-cmd "clickhouse-client --query 'SELECT 1'"
+          --health-interval 3s
+          --health-timeout 3s
+          --health-retries 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.13"
+          enable-cache: true
+
+      - run: uv sync
+
+      - run: uv run pytest -v --tb=short
