@@ -729,7 +729,14 @@
                 const primaryMetric = document.getElementById("chart-metric-primary")?.value || "views";
                 const secondaryMetric = document.getElementById("chart-metric-secondary")?.value || "visitors";
 
-                const labels = historyData.map(h => h.day);
+                const labels = historyData.map(h => {
+                    if (h.day && h.day.includes("T")) {
+                        const date = new Date(h.day);
+                        const pad = (n) => String(n).padStart(2, '0');
+                        return `${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:00`;
+                    }
+                    return h.day;
+                });
                 const datasets = [];
 
                 const buildDataset = (metricKey) => {
@@ -852,15 +859,20 @@
                         const timespan = selectEl.value;
                         if (timespan === "24h") {
                             startDate = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-                        } else if (timespan === "7d") {
-                            startDate = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
-                        } else if (timespan === "30d") {
-                            startDate = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
-                        }
-                        if (startDate) {
                             const qParam = `?start_date=${encodeURIComponent(startDate)}`;
                             url += qParam;
-                            historyUrl += qParam;
+                            historyUrl += `${qParam}&interval=hour`;
+                        } else {
+                            if (timespan === "7d") {
+                                startDate = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+                            } else if (timespan === "30d") {
+                                startDate = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+                            }
+                            if (startDate) {
+                                const qParam = `?start_date=${encodeURIComponent(startDate)}`;
+                                url += qParam;
+                                historyUrl += qParam;
+                            }
                         }
                     }
 
