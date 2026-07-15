@@ -16,16 +16,86 @@ A lightweight, schema-less event tracking and analytics microservice that record
     ```
 3. Run the server:
     ```bash
-    uv run uvicorn main:app --reload
+    uv run uvicorn src.main:app --reload
     ```
 
 Open **`http://127.0.0.1:8000/`** to access the Analytics Console dashboard.
 
 ---
 
-## Live Tracker Demo
+## Client Integration (tracker.js)
 
-The repository includes a lightweight, no-code JavaScript tracker (`tracker.js`) and an interactive console (`tracker_demo.html`). To view the live tracking logs, navigate to **`http://127.0.0.1:8000/demo`** in your browser.
+The project includes a drop-in JavaScript tracker (`static/tracker.js`) to record browser telemetry.
+
+### 1. Embed the Script
+Include the script at the bottom of your HTML pages. Using the `defer` attribute ensures the script does not block HTML parsing. By default, it sends events to the same host at `/api/analytics/ingest` (you only need to provide `data-endpoint` if hosting the API on a separate domain):
+```html
+<!-- Same-domain tracking (default) -->
+<script src="http://127.0.0.1:8000/static/tracker.js" defer></script>
+
+<!-- Cross-domain tracking (optional) -->
+<script
+  src="http://127.0.0.1:8000/static/tracker.js"
+  data-endpoint="https://analytics.example.com/api/analytics/ingest"
+  defer
+></script>
+```
+
+### 2. Auto-Track Clicks & Attributes
+Adding a `data-event` attribute to any interactive element will automatically track click events. Any additional `data-*` attributes will be dynamically included as custom properties (converted to snake_case):
+```html
+<button
+  data-event="btn_click"
+  data-target-id="premium_signup"
+  data-price="49.99"
+>
+  Sign Up
+</button>
+```
+*Clicking this button automatically triggers an ingestion payload with `event_type: "btn_click"` and custom properties `{"target_id": "premium_signup", "price": "49.99"}`.*
+
+### 3. Interactive Demo Page
+An interactive event simulator and log console is served directly at **`http://127.0.0.1:8000/demo`** to test integrations and verify page tracking.
+
+---
+
+## API Examples (cURL)
+
+### 1. Ingest Events
+Send telemetry data from external websites or server-side applications. Ingestion is **public** and does not require credentials.
+
+```bash
+curl -X POST http://127.0.0.1:8000/api/analytics/ingest \
+  -H "Content-Type: application/json" \
+  -d '{
+    "event_type": "purchase",
+    "device": "mobile",
+    "pathname": "/checkout/success",
+    "referrer": "google.com",
+    "duration_sec": 45,
+    "product_id": "99",
+    "price": "49.99"
+  }'
+```
+
+### 2. Query Aggregations (Secure)
+Query custom metrics, groupings, and filters. This endpoint requires passing the authorization API key.
+
+```bash
+curl -X POST http://127.0.0.1:8000/api/analytics/query \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer demo-api-key" \
+  -d '{
+    "metrics": [
+      { "type": "count", "field": "event_id", "alias": "total_sales" },
+      { "type": "sum", "field": "properties.price", "alias": "total_revenue" }
+    ],
+    "group_by": ["pathname"],
+    "filters": [
+      { "field": "event_type", "operator": "eq", "value": "purchase" }
+    ]
+  }'
+```
 
 ---
 
@@ -67,45 +137,3 @@ For bulk data loading, ClickHouse's column-oriented design scales significantly 
 | **Insert Batch (50,000 events)**    |    169.89 ms    |    66.19 ms     | **2.57x** (ClickHouse) |
 | **Insert Batch (100,000 events)**   |    294.65 ms    |    96.24 ms     | **3.06x** (ClickHouse) |
 | **Insert Batch (1,000,000 events)** |   2851.14 ms    |    838.35 ms    | **3.40x** (ClickHouse) |
-
----
-
-## Querying Dynamic Aggregations (cURL Examples)
-
-You can query dynamic metrics, filters, and groupings directly from external applications via `POST /api/analytics/query`.
-
-### Example 1: Basic Pageviews & Unique Visitors
-
-Count all `pageview` events grouped by URL pathname:
-
-```bash
-curl -X POST http://127.0.0.1:8000/api/analytics/query \
-  -H "Content-Type: application/json" \
-  -d '{
-    "metrics": [
-      { "type": "count", "field": "event_id", "alias": "total_views" },
-      { "type": "uniq", "field": "user_id", "alias": "unique_visitors" }
-    ],
-    "group_by": ["pathname"],
-    "filters": [
-      { "field": "event_type", "operator": "eq", "value": "pageview" }
-    ]
-  }'
-```
-
-### Example 2: Aggregate Dynamic Properties
-
-Aggregate custom properties (such as `scroll_depth` or `commission`) stored inside the database map columns:
-
-```bash
-curl -X POST http://127.0.0.1:8000/api/analytics/query \
-  -H "Content-Type: application/json" \
-  -d '{
-    "metrics": [
-      { "type": "avg", "field": "properties.scroll_depth", "alias": "avg_scroll_pct" },
-      { "type": "sum", "field": "properties.commission", "alias": "total_commissions" }
-    ],
-    "group_by": ["device"],
-    "filters": []
-  }'
-```
