@@ -72,38 +72,15 @@
 
     function buildEvent(eventType, properties = {}) {
         const event = {
-            target_id: parseInt(properties.target_id, 10) || 0,
-            category_id: parseInt(properties.category_id, 10) || 0,
             event_type: eventType,
-            duration_sec: parseInt(properties.duration_sec, 10) || 0,
-            is_liked: properties.is_liked ? 1 : 0,
             device: getDeviceType(),
             pathname: properties.pathname || currentPathname,
             referrer: document.referrer,
-            commission: parseFloat(properties.commission) || 0.0,
+            duration_sec: parseInt(properties.duration_sec, 10) || 0,
         };
 
-        if (eventType === "click" && !properties.commission) {
-            event.commission =
-                Math.round((Math.random() * 2.45 + 0.05) * 100) / 100;
-        } else if (eventType === "share" && !properties.commission) {
-            event.commission =
-                Math.round((Math.random() * 4.5 + 0.5) * 100) / 100;
-        }
-
-        const standardKeys = [
-            "target_id",
-            "category_id",
-            "event_type",
-            "duration_sec",
-            "is_liked",
-            "device",
-            "pathname",
-            "referrer",
-            "commission",
-        ];
         for (const [key, value] of Object.entries(properties)) {
-            if (!standardKeys.includes(key)) {
+            if (key !== "device" && key !== "pathname" && key !== "referrer" && key !== "duration_sec") {
                 event[key] = value;
             }
         }
@@ -200,14 +177,7 @@
                 if (attr.name.startsWith("data-")) {
                     const key = attr.name.substring(5);
                     if (key === "event") continue;
-
-                    if (key === "target") props["target_id"] = attr.value;
-                    else if (key === "category") props["category_id"] = attr.value;
-                    else if (key === "liked")
-                        props["is_liked"] = attr.value === "true";
-                    else if (key === "duration") props["duration_sec"] = attr.value;
-                    else if (key === "commission") props["commission"] = attr.value;
-                    else props[key.replace(/-/g, "_")] = attr.value;
+                    props[key.replace(/-/g, "_")] = attr.value;
                 }
             }
             track(eventType, props);
