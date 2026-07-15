@@ -19,7 +19,7 @@ def get_ch_client():
 def init_db(ch_client):
     ch_client.command("""
         CREATE TABLE IF NOT EXISTS events (
-            event_id Int64,
+            event_id UUID DEFAULT generateUUIDv4(),
             user_id Int32,
             event_type LowCardinality(String),
             event_time DateTime,

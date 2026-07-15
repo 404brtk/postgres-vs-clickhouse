@@ -1,5 +1,4 @@
 import time
-import secrets
 import logging
 from datetime import datetime
 from typing import Union
@@ -51,7 +50,6 @@ def create_events(
 
     prepared_rows = []
     for ev in events:
-        event_id = secrets.randbelow(9000000000) + 1000000000
         event_time = datetime.now()
 
         extra = ev.model_extra or {}
@@ -66,7 +64,6 @@ def create_events(
 
         prepared_rows.append(
             (
-                event_id,
                 ev_user_id,
                 ev.event_type,
                 event_time,
@@ -85,7 +82,6 @@ def create_events(
             "events",
             data=prepared_rows,
             column_names=[
-                "event_id",
                 "user_id",
                 "event_type",
                 "event_time",
