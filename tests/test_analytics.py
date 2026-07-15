@@ -281,3 +281,57 @@ def test_custom_query_error_handling(client):
         "/api/analytics/query", json=query_missing_field, headers=HEADERS
     )
     assert res2.status_code in (400, 422)
+
+
+def test_analytics_history_basic(client):
+    events = [
+        {"event_type": "pageview", "pathname": "/home", "duration_sec": 10},
+        {"event_type": "click", "pathname": "/home", "duration_sec": 0},
+    ]
+    client.post("/api/analytics/ingest", json=events)
+
+    res = client.get("/api/analytics/history", headers=HEADERS)
+    assert res.status_code == 200
+    data = res.json()
+    assert len(data) >= 1
+    row = data[0]
+    assert "day" in row
+    assert "views" in row
+    assert "visitors" in row
+    assert "events" in row
+    assert "duration" in row
+
+
+def test_analytics_history_intervals_and_filters(client):
+    events = [
+        {"event_type": "pageview", "pathname": "/home", "duration_sec": 10},
+        {"event_type": "click", "pathname": "/home", "duration_sec": 0},
+    ]
+    client.post("/api/analytics/ingest", json=events)
+
+    res_hour = client.get("/api/analytics/history?interval=hour", headers=HEADERS)
+    assert res_hour.status_code == 200
+    data_hour = res_hour.json()
+    assert len(data_hour) >= 1
+    assert "T" in data_hour[0]["day"]
+    assert data_hour[0]["events"] == 2
+
+    res_min = client.get("/api/analytics/history?interval=minute", headers=HEADERS)
+    assert res_min.status_code == 200
+    data_min = res_min.json()
+    assert len(data_min) >= 1
+    assert "T" in data_min[0]["day"]
+
+    res_filter = client.get(
+        "/api/analytics/history?event_type=pageview", headers=HEADERS
+    )
+    assert res_filter.status_code == 200
+    data_filter = res_filter.json()
+    assert len(data_filter) >= 1
+    assert data_filter[0]["views"] == 1
+    assert data_filter[0]["events"] == 1
+
+
+def test_analytics_history_auth_enforced(client):
+    res = client.get("/api/analytics/history")
+    assert res.status_code == 401
