@@ -239,31 +239,6 @@ th {
     font-weight: normal;
 }
 
-.chart-container {
-    position: relative;
-    height: 350px;
-    width: 100%;
-    margin-top: 15px;
-}
-
-.loading-spinner {
-    display: inline-block;
-    width: 12px;
-    height: 12px;
-    border: 2px solid rgba(255, 255, 255, 0.3);
-    border-radius: 50%;
-    border-top-color: #fff;
-    animation: spin 1s ease-in-out infinite;
-    margin-right: 5px;
-    vertical-align: middle;
-}
-
-@keyframes spin {
-    to {
-        transform: rotate(360deg);
-    }
-}
-
 .nav-links {
     display: flex;
     gap: 15px;
@@ -301,8 +276,6 @@ th {
     margin-bottom: 12px;
     line-height: 1.4;
 }
-
-
 
 .query-sandbox-card .form-row select,
 .query-sandbox-card .form-row input[type="text"],
@@ -362,6 +335,34 @@ th {
 
 .overview-results-section {
     margin-top: 20px;
+}
+
+.dashboard-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid var(--border-color);
+    margin-top: 20px;
+    margin-bottom: 10px;
+    padding-bottom: 5px;
+}
+
+.dashboard-header h2 {
+    margin-top: 0;
+    margin-bottom: 0;
+    border-bottom: none;
+    padding-bottom: 0;
+}
+
+#overview-timespan {
+    font-family: monospace;
+    font-size: 11px;
+    padding: 3px 6px;
+    background-color: var(--card-bg);
+    border: 1px solid var(--border-color);
+    color: var(--text-primary);
+    border-radius: 4px;
+    outline: none;
 }
 
 .metrics-grid-row {
@@ -472,12 +473,6 @@ th {
     color: #38bdf8;
 }
 
-
-
-
-
-
-
 .metric-type {
     width: 80px;
     flex-shrink: 0;
@@ -550,4 +545,60 @@ th {
 
 .danger-btn-text:hover {
     background-color: rgba(239, 68, 68, 0.1) !important;
+}
+
+.chart-card-row {
+    margin-bottom: 20px;
+    display: block;
+}
+
+.chart-card-row .card {
+    width: 100%;
+}
+
+.chart-title {
+    margin-bottom: 10px;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.chart-canvas-container {
+    height: 250px;
+    position: relative;
+}
+
+.chart-header-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 15px;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.chart-header-row .chart-title {
+    margin-bottom: 0;
+}
+
+.chart-selectors {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.chart-selector-label {
+    font-size: 11px;
+    color: var(--text-secondary);
+}
+
+.chart-selectors select {
+    font-family: monospace;
+    font-size: 11px;
+    padding: 2px 4px;
+    background-color: var(--card-bg);
+    border: 1px solid var(--border-color);
+    color: var(--text-primary);
+    border-radius: 4px;
+    outline: none;
 }

@@ -323,3 +323,46 @@ def get_analytics_overview(
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/api/analytics/history")
+def get_analytics_history(
+    start_date: datetime | None = None,
+    end_date: datetime | None = None,
+    event_type: str | None = None,
+    _=Depends(verify_api_key),
+):
+    try:
+        where_parts = []
+        params: dict = {}
+
+        if start_date:
+            where_parts.append("event_time >= %(start_date)s")
+            params["start_date"] = start_date
+
+        if end_date:
+            where_parts.append("event_time <= %(end_date)s")
+            params["end_date"] = end_date
+
+        if event_type:
+            where_parts.append("event_type = %(event_type)s")
+            params["event_type"] = event_type
+
+        where_clause = f"WHERE {' AND '.join(where_parts)}" if where_parts else ""
+
+        q_history = f"""
+            SELECT
+                toDate(event_time) AS day,
+                countIf(event_type = 'pageview') AS views,
+                uniq(user_id) AS visitors,
+                COUNT(*) AS events,
+                avgIf(duration_sec, duration_sec > 0) AS duration
+            FROM events
+            {where_clause}
+            GROUP BY day
+            ORDER BY day ASC
+            LIMIT 90
+        """
+        return execute_sql(q_history, params)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

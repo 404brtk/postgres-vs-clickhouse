@@ -6,6 +6,7 @@
         <title>Analytics Console</title>
         <link rel="stylesheet" href="/static/style.css" />
         <script src="/static/console.js"></script>
+        <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     </head>
     <body>
         <div class="container">
@@ -24,7 +25,15 @@
                 class="section overview-results-section"
                 id="overview-results"
             >
-                <h2>Dashboard Overview</h2>
+                <div class="dashboard-header">
+                    <h2>Dashboard Overview</h2>
+                    <select id="overview-timespan" onchange="loadOverview()">
+                        <option value="24h">Last 24 Hours</option>
+                        <option value="7d">Last 7 Days</option>
+                        <option value="30d" selected>Last 30 Days</option>
+                        <option value="all">All Time</option>
+                    </select>
+                </div>
                 <div class="form-row metrics-grid-row">
                     <div class="card metric-card">
                         <div class="metric-title">
@@ -68,6 +77,35 @@
                             class="metric-value duration"
                         >
                             0.0s
+                        </div>
+                    </div>
+                </div>
+                <div class="chart-card-row">
+                    <div class="card">
+                        <div class="chart-header-row">
+                            <div class="metric-title chart-title">
+                                Views & Visitors Over Time
+                            </div>
+                            <div class="chart-selectors">
+                                <span class="chart-selector-label">Primary:</span>
+                                <select id="chart-metric-primary" onchange="updateOverviewChart()">
+                                    <option value="views" selected>Pageviews</option>
+                                    <option value="visitors">Unique Visitors</option>
+                                    <option value="events">Total Events</option>
+                                    <option value="duration">Avg Time on Site</option>
+                                </select>
+                                <span class="chart-selector-label">Comparison:</span>
+                                <select id="chart-metric-secondary" onchange="updateOverviewChart()">
+                                    <option value="none">None</option>
+                                    <option value="views">Pageviews</option>
+                                    <option value="visitors" selected>Unique Visitors</option>
+                                    <option value="events">Total Events</option>
+                                    <option value="duration">Avg Time on Site</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="chart-canvas-container">
+                            <canvas id="overview-chart"></canvas>
                         </div>
                     </div>
                 </div>
@@ -657,12 +695,177 @@
                 }
             }
 
+            let cachedHistoryData = [];
+            let overviewChart = null;
+
+            const metricConfig = {
+                views: {
+                    label: "Pageviews",
+                    borderColor: "#10b981",
+                    backgroundColor: "rgba(16, 185, 129, 0.05)"
+                },
+                visitors: {
+                    label: "Unique Visitors",
+                    borderColor: "#3b82f6",
+                    backgroundColor: "rgba(59, 130, 246, 0.05)"
+                },
+                events: {
+                    label: "Total Events",
+                    borderColor: "#f59e0b",
+                    backgroundColor: "rgba(245, 158, 11, 0.05)"
+                },
+                duration: {
+                    label: "Avg Time (sec)",
+                    borderColor: "#a855f7",
+                    backgroundColor: "rgba(168, 85, 247, 0.05)"
+                }
+            };
+
+            function renderOverviewChart(historyData) {
+                cachedHistoryData = historyData;
+                const ctx = document.getElementById("overview-chart")?.getContext("2d");
+                if (!ctx) return;
+
+                const primaryMetric = document.getElementById("chart-metric-primary")?.value || "views";
+                const secondaryMetric = document.getElementById("chart-metric-secondary")?.value || "visitors";
+
+                const labels = historyData.map(h => h.day);
+                const datasets = [];
+
+                const buildDataset = (metricKey) => {
+                    const conf = metricConfig[metricKey];
+                    if (!conf) return null;
+                    return {
+                        label: conf.label,
+                        data: historyData.map(h => h[metricKey] || 0),
+                        borderColor: conf.borderColor,
+                        backgroundColor: conf.backgroundColor,
+                        borderWidth: 1.5,
+                        pointRadius: 2,
+                        pointBackgroundColor: conf.borderColor,
+                        tension: 0.1,
+                        fill: true
+                    };
+                };
+
+                const primaryDataset = buildDataset(primaryMetric);
+                if (primaryDataset) datasets.push(primaryDataset);
+
+                if (secondaryMetric !== "none" && secondaryMetric !== primaryMetric) {
+                    const secondaryDataset = buildDataset(secondaryMetric);
+                    if (secondaryDataset) datasets.push(secondaryDataset);
+                }
+
+                if (overviewChart) {
+                    overviewChart.data.labels = labels;
+                    overviewChart.data.datasets = datasets;
+                    overviewChart.update("none");
+                    return;
+                }
+
+                overviewChart = new Chart(ctx, {
+                    type: "line",
+                    data: {
+                        labels: labels,
+                        datasets: datasets
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: {
+                                display: true,
+                                position: "top",
+                                labels: {
+                                    color: "#9ca3af",
+                                    font: {
+                                        family: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+                                        size: 10
+                                    }
+                                }
+                            },
+                            tooltip: {
+                                mode: "index",
+                                intersect: false,
+                                backgroundColor: "#020617",
+                                borderColor: "#1f2937",
+                                borderWidth: 1,
+                                titleFont: {
+                                    family: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+                                    size: 11
+                                },
+                                bodyFont: {
+                                    family: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+                                    size: 11
+                                },
+                                bodyColor: "#d1d5db",
+                                titleColor: "#9ca3af"
+                            }
+                        },
+                        scales: {
+                            x: {
+                                grid: {
+                                    color: "#1f2937",
+                                    borderColor: "#1f2937"
+                                },
+                                ticks: {
+                                    color: "#9ca3af",
+                                    font: {
+                                        family: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+                                        size: 10
+                                    }
+                                }
+                            },
+                            y: {
+                                beginAtZero: true,
+                                grid: {
+                                    color: "#1f2937",
+                                    borderColor: "#1f2937"
+                                },
+                                ticks: {
+                                    color: "#9ca3af",
+                                    font: {
+                                        family: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+                                        size: 10
+                                    }
+                                }
+                            }
+                        }
+                    }
+                });
+            }
+
+            function updateOverviewChart() {
+                renderOverviewChart(cachedHistoryData);
+            }
+
             async function loadOverview() {
                 log(`[SYSTEM] Loading overview stats from ClickHouse...`);
 
                 try {
+                    let url = "/api/analytics/overview";
+                    let historyUrl = "/api/analytics/history";
+
+                    const selectEl = document.getElementById("overview-timespan");
+                    let startDate = null;
+                    if (selectEl) {
+                        const timespan = selectEl.value;
+                        if (timespan === "24h") {
+                            startDate = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+                        } else if (timespan === "7d") {
+                            startDate = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+                        } else if (timespan === "30d") {
+                            startDate = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+                        }
+                        if (startDate) {
+                            const qParam = `?start_date=${encodeURIComponent(startDate)}`;
+                            url += qParam;
+                            historyUrl += qParam;
+                        }
+                    }
+
                     const res = await fetch(
-                        getApiUrl("/api/analytics/overview"),
+                        getApiUrl(url),
                         { headers: getRequestHeaders() },
                     );
                     if (isAuthError(res)) return;
@@ -688,6 +891,15 @@
                             : "0.0";
                     document.getElementById("ov-val-duration").innerText =
                         `${avgDur}s`;
+
+                    const histRes = await fetch(
+                        getApiUrl(historyUrl),
+                        { headers: getRequestHeaders() },
+                    );
+                    if (histRes.ok) {
+                        const histData = await histRes.json();
+                        renderOverviewChart(histData || []);
+                    }
 
                     const pagesBody = document.querySelector(
                         "#ov-table-pages tbody",
