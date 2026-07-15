@@ -3,7 +3,7 @@
     window.__tracker_initialized__ = true;
 
     const currentScript =
-        document.getElementById("tracker-script") || document.currentScript;
+        document.querySelector('[src*="/static/tracker.js"]') || document.currentScript;
     let trackerEndpoint = currentScript
         ? currentScript.getAttribute("data-endpoint") || "/api/analytics/ingest"
         : "/api/analytics/ingest";
