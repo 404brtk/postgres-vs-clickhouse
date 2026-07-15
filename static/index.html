@@ -28,6 +28,7 @@
                 <div class="dashboard-header">
                     <h2>Dashboard Overview</h2>
                     <select id="overview-timespan" onchange="loadOverview()">
+                        <option value="1h">Last Hour</option>
                         <option value="24h">Last 24 Hours</option>
                         <option value="7d">Last 7 Days</option>
                         <option value="30d" selected>Last 30 Days</option>
@@ -733,7 +734,7 @@
                     if (h.day && h.day.includes("T")) {
                         const date = new Date(h.day);
                         const pad = (n) => String(n).padStart(2, '0');
-                        return `${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:00`;
+                        return `${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
                     }
                     return h.day;
                 });
@@ -857,7 +858,12 @@
                     let startDate = null;
                     if (selectEl) {
                         const timespan = selectEl.value;
-                        if (timespan === "24h") {
+                        if (timespan === "1h") {
+                            startDate = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+                            const qParam = `?start_date=${encodeURIComponent(startDate)}`;
+                            url += qParam;
+                            historyUrl += `${qParam}&interval=minute`;
+                        } else if (timespan === "24h") {
                             startDate = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
                             const qParam = `?start_date=${encodeURIComponent(startDate)}`;
                             url += qParam;

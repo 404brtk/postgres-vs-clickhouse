@@ -352,6 +352,10 @@ def get_analytics_history(
             time_expr = (
                 "formatDateTime(toStartOfHour(event_time), '%%Y-%%m-%%dT%%H:00:00Z')"
             )
+        elif interval == "minute":
+            time_expr = (
+                "formatDateTime(toStartOfMinute(event_time), '%%Y-%%m-%%dT%%H:%%i:00Z')"
+            )
 
         q_history = f"""
             SELECT
