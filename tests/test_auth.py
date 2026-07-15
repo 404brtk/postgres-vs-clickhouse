@@ -1,4 +1,4 @@
-import config
+from src import config
 
 
 def test_api_key_required(client):

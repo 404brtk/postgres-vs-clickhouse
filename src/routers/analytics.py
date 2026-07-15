@@ -3,10 +3,10 @@ import logging
 from datetime import datetime
 from typing import Union
 from fastapi import APIRouter, Depends, HTTPException, Request
-from config import generate_user_hash
-from database import execute_sql, get_ch_client
-from models import GenericEvent, QuerySpec
-from auth import verify_api_key
+from src.config import generate_user_hash
+from src.database import execute_sql, get_ch_client
+from src.models import GenericEvent, QuerySpec
+from src.auth import verify_api_key
 
 router = APIRouter()
 

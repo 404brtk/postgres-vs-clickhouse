@@ -1,7 +1,7 @@
 import pytest
 import clickhouse_connect
 from fastapi.testclient import TestClient
-import config
+from src import config
 
 TEST_DB = "test_analytics_db"
 
@@ -20,7 +20,7 @@ def setup_test_db():
     original_db = config.CH_DB
     config.CH_DB = TEST_DB
 
-    from database import init_db
+    from src.database import init_db
 
     test_ch_client = clickhouse_connect.get_client(
         host=config.CH_HOST,
@@ -61,7 +61,7 @@ def clear_events_table():
 
 @pytest.fixture
 def client():
-    from main import app
+    from src.main import app
 
     with TestClient(app) as c:
         yield c

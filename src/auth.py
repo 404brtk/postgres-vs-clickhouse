@@ -1,7 +1,7 @@
 import secrets
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-import config
+from src import config
 
 security_scheme = HTTPBearer(auto_error=False)
 

@@ -1,5 +1,5 @@
 import pytest
-import config
+from src import config
 
 pytestmark = pytest.mark.usefixtures("clear_events_table")
 

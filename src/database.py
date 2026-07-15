@@ -3,7 +3,7 @@ from decimal import Decimal
 from math import isnan, isinf
 from typing import Any
 import clickhouse_connect
-from config import CH_HOST, CH_PORT, CH_USER, CH_PASSWORD, CH_DB
+from src.config import CH_HOST, CH_PORT, CH_USER, CH_PASSWORD, CH_DB
 
 
 def get_ch_client():

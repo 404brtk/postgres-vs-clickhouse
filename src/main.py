@@ -4,15 +4,15 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from config import (
+from src.config import (
     CH_DB,
     CH_HOST,
     CH_PASSWORD,
     CH_PORT,
     CH_USER,
 )
-from routers import pages, analytics
-from database import init_db
+from src.routers import pages, analytics
+from src.database import init_db
 
 
 @asynccontextmanager
