@@ -1,8 +1,10 @@
+import logging
 from datetime import datetime, timedelta
 from decimal import Decimal
 from math import isnan, isinf
 from typing import Any
 from fastapi import Request
+from src import config
 
 
 def get_ch_client(request: Request):
@@ -24,6 +26,18 @@ def init_db(ch_client):
         ) ENGINE = MergeTree()
         ORDER BY (event_type, event_time, user_id);
     """)
+
+    if config.RETENTION_MONTHS and config.RETENTION_MONTHS > 0:
+        ch_client.command(
+            f"ALTER TABLE events MODIFY TTL event_time + INTERVAL {config.RETENTION_MONTHS} MONTH"
+        )
+    else:
+        try:
+            ch_client.command("ALTER TABLE events REMOVE TTL")
+        except Exception as e:
+            logging.debug(
+                f"Attempted to remove table TTL but failed (it may not exist): {e}"
+            )
 
 
 def execute_sql(ch_client, sql: str, params: dict) -> list[dict[str, Any]]:

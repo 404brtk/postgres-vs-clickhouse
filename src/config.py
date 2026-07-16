@@ -21,6 +21,7 @@ class Settings(BaseSettings):
 
     analytics_api_key: str = "demo-api-key"
     auth_disabled: bool = False
+    retention_months: int | None = 12
 
 
 settings = Settings()
@@ -33,6 +34,7 @@ CH_DB = settings.clickhouse_db
 
 ANALYTICS_API_KEY = settings.analytics_api_key
 AUTH_DISABLED = settings.auth_disabled
+RETENTION_MONTHS = settings.retention_months
 
 SECRET_KEY_FILE = str(Path(__file__).parent.parent / ".secret_key")  # noqa: S105
 try:

@@ -1,5 +1,6 @@
 import pytest
 from src import config
+from src.database import init_db
 
 pytestmark = pytest.mark.usefixtures("clear_events_table")
 
@@ -335,3 +336,21 @@ def test_analytics_history_intervals_and_filters(client):
 def test_analytics_history_auth_enforced(client):
     res = client.get("/api/analytics/history")
     assert res.status_code == 401
+
+
+def test_database_ttl_retention(client):
+    ch_client = client.app.state.ch_client
+    try:
+        config.RETENTION_MONTHS = 3
+        init_db(ch_client)
+        meta = ch_client.query("SHOW CREATE TABLE events").result_rows[0][0]
+        assert "TTL" in meta
+        assert "3" in meta
+
+        config.RETENTION_MONTHS = None
+        init_db(ch_client)
+        meta = ch_client.query("SHOW CREATE TABLE events").result_rows[0][0]
+        assert "TTL" not in meta
+    finally:
+        config.RETENTION_MONTHS = None
+        init_db(ch_client)
