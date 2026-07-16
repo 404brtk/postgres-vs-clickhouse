@@ -28,6 +28,8 @@ def resolve_field(field_name: str, for_numeric_aggregation: bool = False) -> str
     if field_name.startswith("properties."):
         prop_key = field_name.split(".", 1)[1]
         clean_key = "".join(c for c in prop_key if c.isalnum() or c == "_")
+        if not clean_key:
+            raise ValueError(f"Invalid field name: {field_name}")
         return (
             f"toFloat64OrNull(properties['{clean_key}'])"
             if for_numeric_aggregation
@@ -58,7 +60,7 @@ def create_events(
 
         try:
             ev_user_id = int(custom_user_id) if custom_user_id is not None else user_id
-        except Exception:
+        except (ValueError, TypeError):
             ev_user_id = user_id
 
         properties = {k: str(v) for k, v in extra.items()}
