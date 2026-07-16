@@ -41,6 +41,7 @@ def resolve_field(field_name: str, for_numeric_aggregation: bool = False) -> str
 def create_events(
     payload: Union[GenericEvent, list[GenericEvent]],
     request: Request,
+    ch_client=Depends(get_ch_client),
 ):
     events = [payload] if isinstance(payload, GenericEvent) else payload
 
@@ -77,7 +78,6 @@ def create_events(
 
     start_ch = time.perf_counter()
     try:
-        ch_client = get_ch_client()
         ch_client.insert(
             "events",
             data=prepared_rows,
@@ -92,7 +92,6 @@ def create_events(
                 "properties",
             ],
         )
-        ch_client.close()
     except Exception as e:
         raise HTTPException(
             status_code=500,
@@ -109,12 +108,11 @@ def create_events(
 
 @router.post("/api/analytics/clear")
 def clear_analytics_data(
+    ch_client=Depends(get_ch_client),
     _=Depends(verify_api_key),
 ):
     try:
-        ch_client = get_ch_client()
         ch_client.command("TRUNCATE TABLE events")
-        ch_client.close()
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Failed to clear database: {str(e)}"
@@ -217,11 +215,12 @@ def compile_sql_query(spec: QuerySpec) -> tuple[str, dict]:
 @router.post("/api/analytics/query")
 def query_analytics_events(
     spec: QuerySpec,
+    ch_client=Depends(get_ch_client),
     _=Depends(verify_api_key),
 ):
     try:
         sql, params = compile_sql_query(spec)
-        results = execute_sql(sql, params)
+        results = execute_sql(ch_client, sql, params)
         return results
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -231,17 +230,16 @@ def query_analytics_events(
 
 @router.get("/api/analytics/properties")
 def get_available_properties(
+    ch_client=Depends(get_ch_client),
     _=Depends(verify_api_key),
 ):
     keys = set()
     try:
-        ch_client = get_ch_client()
         res = ch_client.query(
             "SELECT DISTINCT arrayJoin(mapKeys(properties)) AS key FROM events"
         )
         for row in res.result_rows:
             keys.add(row[0])
-        ch_client.close()
     except Exception as e:
         logging.error(f"Failed to fetch available properties: {e}")
     return sorted(list(keys))
@@ -251,6 +249,7 @@ def get_available_properties(
 def get_analytics_overview(
     start_date: datetime | None = None,
     end_date: datetime | None = None,
+    ch_client=Depends(get_ch_client),
     _=Depends(verify_api_key),
 ):
     try:
@@ -300,16 +299,16 @@ def get_analytics_overview(
             ORDER BY views DESC
         """
 
-        summary_rows = execute_sql(q_summary, params)
+        summary_rows = execute_sql(ch_client, q_summary, params)
         summary = (
             summary_rows[0]
             if summary_rows
             else {"total_views": 0, "unique_visitors": 0, "total_events": 0}
         )
 
-        top_pages = execute_sql(q_pages, params)
-        top_referrers = execute_sql(q_referrers, params)
-        devices = execute_sql(q_devices, params)
+        top_pages = execute_sql(ch_client, q_pages, params)
+        top_referrers = execute_sql(ch_client, q_referrers, params)
+        devices = execute_sql(ch_client, q_devices, params)
 
         return {
             "summary": summary,
@@ -327,6 +326,7 @@ def get_analytics_history(
     end_date: datetime | None = None,
     event_type: str | None = None,
     interval: str | None = None,
+    ch_client=Depends(get_ch_client),
     _=Depends(verify_api_key),
 ):
     try:
@@ -370,6 +370,6 @@ def get_analytics_history(
             ORDER BY day ASC
             LIMIT 100
         """
-        return execute_sql(q_history, params)
+        return execute_sql(ch_client, q_history, params)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

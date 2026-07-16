@@ -2,18 +2,11 @@ from datetime import datetime, timedelta
 from decimal import Decimal
 from math import isnan, isinf
 from typing import Any
-import clickhouse_connect
-from src.config import CH_HOST, CH_PORT, CH_USER, CH_PASSWORD, CH_DB
+from fastapi import Request
 
 
-def get_ch_client():
-    return clickhouse_connect.get_client(
-        host=CH_HOST,
-        port=CH_PORT,
-        username=CH_USER,
-        password=CH_PASSWORD,
-        database=CH_DB,
-    )
+def get_ch_client(request: Request):
+    return request.app.state.ch_client
 
 
 def init_db(ch_client):
@@ -33,12 +26,10 @@ def init_db(ch_client):
     """)
 
 
-def execute_sql(sql: str, params: dict) -> list[dict[str, Any]]:
-    ch_client = get_ch_client()
+def execute_sql(ch_client, sql: str, params: dict) -> list[dict[str, Any]]:
     res = ch_client.query(sql, params)
     column_names = res.column_names
     rows = res.result_rows
-    ch_client.close()
 
     results = [dict(zip(column_names, row)) for row in rows]
 

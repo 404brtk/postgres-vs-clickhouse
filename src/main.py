@@ -1,16 +1,10 @@
-import clickhouse_connect
 import logging
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from src.config import (
-    CH_DB,
-    CH_HOST,
-    CH_PASSWORD,
-    CH_PORT,
-    CH_USER,
-)
+import clickhouse_connect
+from src.config import CH_HOST, CH_PORT, CH_USER, CH_PASSWORD, CH_DB
 from src.routers import pages, analytics
 from src.database import init_db
 
@@ -23,14 +17,15 @@ async def lifespan(app: FastAPI):
         username=CH_USER,
         password=CH_PASSWORD,
         database=CH_DB,
+        autogenerate_session_id=False,
     )
+    app.state.ch_client = ch_client
     try:
         init_db(ch_client)
     except Exception as e:
         logging.error(f"ClickHouse initialization failed: {e}")
-    finally:
-        ch_client.close()
     yield
+    ch_client.close()
 
 
 app = FastAPI(title="API", lifespan=lifespan)
