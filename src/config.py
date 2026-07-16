@@ -39,4 +39,4 @@ def generate_user_hash(client_ip: str, user_agent: str) -> int:
     salt = get_daily_salt()
     session_str = f"{client_ip}-{user_agent}-{salt}"
     sha_hex = hashlib.sha256(session_str.encode("utf-8")).hexdigest()
-    return int(sha_hex[:8], 16) % 100000 + 1
+    return (int(sha_hex[:8], 16) & 0x7FFFFFFF) or 1
