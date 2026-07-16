@@ -1,20 +1,38 @@
 import os
 import hashlib
 import secrets
-from pathlib import Path
 from datetime import datetime
-from dotenv import load_dotenv
+from pathlib import Path
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
-load_dotenv()
 
-CH_HOST = os.environ.get("CLICKHOUSE_HOST", "localhost")
-CH_PORT = int(os.environ.get("CLICKHOUSE_PORT", "8123"))
-CH_USER = os.environ.get("CLICKHOUSE_USER", "default")
-CH_PASSWORD = os.environ.get("CLICKHOUSE_PASSWORD", "clickhouse_password")
-CH_DB = os.environ.get("CLICKHOUSE_DB", "default")
+class Settings(BaseSettings):
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
 
-ANALYTICS_API_KEY = os.environ.get("ANALYTICS_API_KEY", "demo-api-key")
-AUTH_DISABLED = os.environ.get("AUTH_DISABLED", "").lower() in ("1", "true", "yes")
+    clickhouse_host: str = "localhost"
+    clickhouse_port: int = 8123
+    clickhouse_user: str = "default"
+    clickhouse_password: str = "clickhouse_password"  # noqa: S105
+    clickhouse_db: str = "default"
+
+    analytics_api_key: str = "demo-api-key"
+    auth_disabled: bool = False
+
+
+settings = Settings()
+
+CH_HOST = settings.clickhouse_host
+CH_PORT = settings.clickhouse_port
+CH_USER = settings.clickhouse_user
+CH_PASSWORD = settings.clickhouse_password
+CH_DB = settings.clickhouse_db
+
+ANALYTICS_API_KEY = settings.analytics_api_key
+AUTH_DISABLED = settings.auth_disabled
 
 SECRET_KEY_FILE = str(Path(__file__).parent.parent / ".secret_key")  # noqa: S105
 try:
