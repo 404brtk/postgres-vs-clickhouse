@@ -237,6 +237,7 @@ def get_available_properties(
 ):
     keys = set()
     try:
+        # TODO: optimize full table scan on properties keys if dataset grows large (unnecessary now)
         res = ch_client.query(
             "SELECT DISTINCT arrayJoin(mapKeys(properties)) AS key FROM events"
         )
