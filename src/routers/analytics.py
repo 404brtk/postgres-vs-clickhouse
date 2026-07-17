@@ -47,6 +47,7 @@ def create_events(
 ):
     events = [payload] if isinstance(payload, GenericEvent) else payload
 
+    # TODO: once reverse proxy is set up, configure uvicorn's --proxy-headers
     client_ip = request.client.host if request.client else "127.0.0.1"
     user_agent = request.headers.get("user-agent", "")
     user_id = generate_user_hash(client_ip, user_agent)
