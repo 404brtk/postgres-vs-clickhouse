@@ -24,7 +24,7 @@ def init_db(ch_client):
             duration_sec Int32 DEFAULT 0,
             properties Map(String, String)
         ) ENGINE = MergeTree()
-        ORDER BY (event_type, event_time, user_id);
+        ORDER BY (event_time, event_type, user_id);
     """)
 
     if config.RETENTION_MONTHS and config.RETENTION_MONTHS > 0:
