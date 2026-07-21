@@ -78,8 +78,52 @@ def test_analytics_overview(client):
 
     devices = {d["device"]: d["views"] for d in data["devices"]}
     assert devices.get("desktop") == 1
-    assert devices.get("mobile") == 2
+    assert devices.get("mobile") == 1
     assert devices.get("tablet") == 1
+
+
+def test_overview_views_exclude_exit_and_clicks(client):
+    events = [
+        {
+            "event_type": "pageview",
+            "pathname": "/demo",
+            "referrer": "google.com",
+            "device": "desktop",
+            "user_id": 99,
+        },
+        {
+            "event_type": "exit",
+            "pathname": "/demo",
+            "referrer": "google.com",
+            "device": "desktop",
+            "user_id": 99,
+            "duration_sec": 15,
+        },
+        {
+            "event_type": "click",
+            "pathname": "/demo",
+            "referrer": "google.com",
+            "device": "desktop",
+            "user_id": 99,
+        },
+    ]
+    client.post("/api/analytics/ingest", json=events)
+
+    res = client.get("/api/analytics/overview", headers=HEADERS)
+    assert res.status_code == 200
+    data = res.json()
+
+    assert data["summary"]["total_views"] == 1
+    assert data["summary"]["total_events"] == 3
+
+    assert data["top_pages"][0]["pathname"] == "/demo"
+    assert data["top_pages"][0]["views"] == 1
+
+    assert data["top_referrers"][0]["referrer"] == "google.com"
+    assert data["top_referrers"][0]["views"] == 1
+
+    assert data["devices"][0]["device"] == "desktop"
+    assert data["devices"][0]["views"] == 1
 
 
 def test_custom_query_aggregations(client):

@@ -215,6 +215,7 @@ def _compile_bounce_query(spec: QuerySpec, where_clause: str, limit_clause: str)
 
     inner_cols = [
         "user_id",
+        "COUNT(*) AS `_total_cnt`",
         "countIf(event_type = 'pageview') AS `_pv_cnt`",
         "countIf(event_type NOT IN ('pageview', 'exit')) AS `_interact_cnt`",
     ] + gb_select
@@ -233,7 +234,7 @@ def _compile_bounce_query(spec: QuerySpec, where_clause: str, limit_clause: str)
                 f"round(if(count() = 0, 0.0, countIf(`_pv_cnt` = 1 AND `_interact_cnt` = 0) * 100.0 / count()), 2) AS {alias_escaped}"
             )
         elif m.type == "count":
-            outer_select.append(f"sum(`_pv_cnt` + `_interact_cnt`) AS {alias_escaped}")
+            outer_select.append(f"sum(`_total_cnt`) AS {alias_escaped}")
         elif m.type == "uniq":
             outer_select.append(f"count() AS {alias_escaped}")
         else:
@@ -352,26 +353,29 @@ def get_analytics_overview(
             FROM user_sessions
         """
         q_pages = f"""
-            SELECT pathname, COUNT(*) AS views, uniq(user_id) AS unique_visitors
+            SELECT pathname, countIf(event_type = 'pageview') AS views, uniq(user_id) AS unique_visitors
             FROM events
             {where_clause}
             GROUP BY pathname
+            HAVING views > 0
             ORDER BY views DESC
             LIMIT 10
         """
         q_referrers = f"""
-            SELECT referrer, COUNT(*) AS views
+            SELECT referrer, countIf(event_type = 'pageview') AS views
             FROM events
             {where_clause}
             GROUP BY referrer
+            HAVING views > 0
             ORDER BY views DESC
             LIMIT 10
         """
         q_devices = f"""
-            SELECT device, COUNT(*) AS views
+            SELECT device, countIf(event_type = 'pageview') AS views
             FROM events
             {where_clause}
             GROUP BY device
+            HAVING views > 0
             ORDER BY views DESC
         """
 
