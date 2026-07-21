@@ -28,33 +28,39 @@ Open **`http://127.0.0.1:8000/`** to access the Analytics Console dashboard.
 The project includes a drop-in JavaScript tracker (`static/tracker.js`) to record browser telemetry.
 
 ### 1. Embed the Script
+
 Include the script at the bottom of your HTML pages. Using the `defer` attribute ensures the script does not block HTML parsing. By default, it sends events to the same host at `/api/analytics/ingest` (you only need to provide `data-endpoint` if hosting the API on a separate domain):
+
 ```html
 <!-- Same-domain tracking (default) -->
 <script src="http://127.0.0.1:8000/static/tracker.js" defer></script>
 
 <!-- Cross-domain tracking (optional) -->
 <script
-  src="http://127.0.0.1:8000/static/tracker.js"
-  data-endpoint="https://analytics.example.com/api/analytics/ingest"
-  defer
+    src="http://127.0.0.1:8000/static/tracker.js"
+    data-endpoint="https://analytics.example.com/api/analytics/ingest"
+    defer
 ></script>
 ```
 
 ### 2. Auto-Track Clicks & Attributes
+
 Adding a `data-event` attribute to any interactive element will automatically track click events. Any additional `data-*` attributes will be dynamically included as custom properties (converted to snake_case):
+
 ```html
 <button
-  data-event="btn_click"
-  data-target-id="premium_signup"
-  data-price="49.99"
+    data-event="btn_click"
+    data-target-id="premium_signup"
+    data-price="49.99"
 >
-  Sign Up
+    Sign Up
 </button>
 ```
-*Clicking this button automatically triggers an ingestion payload with `event_type: "btn_click"` and custom properties `{"target_id": "premium_signup", "price": "49.99"}`.*
+
+_Clicking this button automatically triggers an ingestion payload with `event_type: "btn_click"` and custom properties `{"target_id": "premium_signup", "price": "49.99"}`._
 
 ### 3. Interactive Demo Page
+
 An interactive event simulator and log console is served directly at **`http://127.0.0.1:8000/demo`** to test integrations and verify page tracking.
 
 ---
@@ -62,6 +68,7 @@ An interactive event simulator and log console is served directly at **`http://1
 ## API Examples (cURL)
 
 ### 1. Ingest Events
+
 Send telemetry data from external websites or server-side applications. Ingestion is **public** and does not require credentials.
 
 ```bash
@@ -79,6 +86,7 @@ curl -X POST http://127.0.0.1:8000/api/analytics/ingest \
 ```
 
 ### 2. Query Aggregations (Secure)
+
 Query custom metrics, groupings, and filters. This endpoint requires passing the authorization API key.
 
 ```bash
@@ -95,6 +103,73 @@ curl -X POST http://127.0.0.1:8000/api/analytics/query \
       { "field": "event_type", "operator": "eq", "value": "purchase" }
     ]
   }'
+```
+
+---
+
+## Database Backups & Disaster Recovery (Cloudflare R2)
+
+Database backups are managed using the official `altinity/clickhouse-backup` Docker service with `zstd` level 3 compression and direct streaming to Cloudflare R2.
+
+### 1. Configuration Setup
+
+Copy `.env.example` to `.env` and fill in your Cloudflare R2 credentials:
+
+```env
+R2_ACCOUNT_ID=your_cloudflare_account_id
+R2_BUCKET_NAME=your_r2_bucket_name
+R2_ACCESS_KEY_ID=your_r2_access_key_id
+R2_SECRET_ACCESS_KEY=your_r2_secret_access_key
+```
+
+---
+
+### 2. Manual Backup Management
+
+#### Monthly Full Baseline Backup (1st of every month)
+
+```bash
+docker compose exec clickhouse-backup clickhouse-backup create_remote --delete full_$(date +%Y_%m)
+```
+
+#### Daily Incremental Backup (Every night)
+
+```bash
+docker compose exec clickhouse-backup clickhouse-backup create_remote --diff-from-remote=full_$(date +%Y_%m) --delete inc_$(date +%Y_%m_%d)
+```
+
+#### List Remote Backups stored in Cloudflare R2
+
+```bash
+docker compose exec clickhouse-backup clickhouse-backup list remote
+```
+
+#### Delete a Remote Backup
+
+```bash
+docker compose exec clickhouse-backup clickhouse-backup delete remote <backup_name>
+```
+
+---
+
+### 3. Disaster Recovery (Restoring Data)
+
+To restore a backup from Cloudflare R2 into ClickHouse:
+
+```bash
+docker compose exec clickhouse-backup clickhouse-backup restore_remote --rm --restore-database-mapping default:default <backup_name>
+```
+
+> **Note**: Pass `--restore-database-mapping default:default` when restoring to generate fresh Atomic table UUIDs, preventing directory collisions with ClickHouse's background drop queue. Pass `--rm` to automatically drop pre-existing schema tables before restoring.
+
+---
+
+### 4. Automated Hands-Free Scheduler (`watch` Mode)
+
+To enable automatic background backups, set `command: [- watch]` for `clickhouse-backup` in `docker-compose.yml` and set `WATCH_SCHEDULES` in `.env`:
+
+```env
+WATCH_SCHEDULES="name=monthly,full=0 0 1 * *,increment=0 2 * * *"
 ```
 
 ---
