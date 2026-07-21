@@ -80,6 +80,17 @@
                             0.0s
                         </div>
                     </div>
+                    <div class="card metric-card">
+                        <div class="metric-title">
+                            BOUNCE RATE
+                        </div>
+                        <div
+                            id="ov-val-bounce"
+                            class="metric-value bounce"
+                        >
+                            0.0%
+                        </div>
+                    </div>
                 </div>
                 <div class="chart-card-row">
                     <div class="card">
@@ -94,6 +105,7 @@
                                     <option value="visitors">Unique Visitors</option>
                                     <option value="events">Total Events</option>
                                     <option value="duration">Avg Time on Site</option>
+                                    <option value="bounce">Bounce Rate (%)</option>
                                 </select>
                                 <span class="chart-selector-label">Comparison:</span>
                                 <select id="chart-metric-secondary" onchange="updateOverviewChart()">
@@ -102,6 +114,7 @@
                                     <option value="visitors" selected>Unique Visitors</option>
                                     <option value="events">Total Events</option>
                                     <option value="duration">Avg Time on Site</option>
+                                    <option value="bounce">Bounce Rate (%)</option>
                                 </select>
                             </div>
                         </div>
@@ -425,6 +438,7 @@
                     <option value="avg">AVG</option>
                     <option value="min">MIN</option>
                     <option value="max">MAX</option>
+                    <option value="bounce_rate">BOUNCE_RATE</option>
                 </select>
                 <div class="flex-1">
                     ${dropdownHtml}
@@ -719,6 +733,11 @@
                     label: "Avg Time (sec)",
                     borderColor: "#a855f7",
                     backgroundColor: "rgba(168, 85, 247, 0.05)"
+                },
+                bounce: {
+                    label: "Bounce Rate (%)",
+                    borderColor: "#ef4444",
+                    backgroundColor: "rgba(239, 68, 68, 0.05)"
                 }
             };
 
@@ -909,6 +928,14 @@
                             : "0.0";
                     document.getElementById("ov-val-duration").innerText =
                         `${avgDur}s`;
+
+                    const bounce =
+                        data.summary.bounce_rate !== null &&
+                        data.summary.bounce_rate !== undefined
+                            ? Number(data.summary.bounce_rate).toFixed(1)
+                            : "0.0";
+                    document.getElementById("ov-val-bounce").innerText =
+                        `${bounce}%`;
 
                     const histRes = await fetch(
                         getApiUrl(historyUrl),

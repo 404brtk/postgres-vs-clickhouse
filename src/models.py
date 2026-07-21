@@ -14,7 +14,7 @@ class GenericEvent(BaseModel):
 
 
 class MetricSpec(BaseModel):
-    type: Literal["count", "uniq", "sum", "avg", "min", "max"]
+    type: Literal["count", "uniq", "sum", "avg", "min", "max", "bounce_rate"]
     field: str | None = None
     alias: str | None = None
 

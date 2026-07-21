@@ -354,3 +354,53 @@ def test_database_ttl_retention(client):
     finally:
         config.RETENTION_MONTHS = None
         init_db(ch_client)
+
+
+def test_bounce_rate_query(client):
+    events = [
+        {"event_type": "pageview", "user_id": 101, "pathname": "/home"},
+        {"event_type": "click", "user_id": 101, "pathname": "/home"},
+        {"event_type": "exit", "user_id": 101, "pathname": "/home"},
+        {"event_type": "pageview", "user_id": 102, "pathname": "/home"},
+        {"event_type": "exit", "user_id": 102, "pathname": "/home"},
+    ]
+    client.post("/api/analytics/ingest", json=events)
+
+    spec = {
+        "metrics": [{"type": "bounce_rate", "alias": "bounce_rate"}],
+        "group_by": ["pathname"],
+    }
+    res = client.post("/api/analytics/query", json=spec, headers=HEADERS)
+    assert res.status_code == 200
+    data = res.json()
+    assert len(data) == 1
+    assert data[0]["pathname"] == "/home"
+    assert data[0]["bounce_rate"] == 50.0
+
+    overview_res = client.get("/api/analytics/overview", headers=HEADERS)
+    assert overview_res.status_code == 200
+    overview_data = overview_res.json()
+    assert overview_data["summary"]["bounce_rate"] == 50.0
+
+    history_res = client.get("/api/analytics/history", headers=HEADERS)
+    assert history_res.status_code == 200
+    history_data = history_res.json()
+    assert len(history_data) >= 1
+    assert "bounce" in history_data[0]
+    assert history_data[0]["bounce"] == 50.0
+
+
+def test_dynamic_bounce_rate_transition(client):
+    client.post(
+        "/api/analytics/ingest",
+        json={"event_type": "pageview", "user_id": 301, "pathname": "/feature"},
+    )
+    res_initial = client.get("/api/analytics/overview", headers=HEADERS)
+    assert res_initial.json()["summary"]["bounce_rate"] == 100.0
+
+    client.post(
+        "/api/analytics/ingest",
+        json={"event_type": "click", "user_id": 301, "pathname": "/feature"},
+    )
+    res_updated = client.get("/api/analytics/overview", headers=HEADERS)
+    assert res_updated.json()["summary"]["bounce_rate"] == 0.0
